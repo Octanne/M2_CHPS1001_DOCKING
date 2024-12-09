@@ -87,10 +87,11 @@ def clustering_molecule(mol_atoms):
         if not find_cluster:
             clusters.append(list())
             clusters_com.append(atom_com)
-            clusters[iCluster+1].append(atom)
+            clusters[iCluster].append(atom)
+            print(f"New cluster {iCluster} started with atom {i} and center of mass {atom_com}")
         i += 1
     
-    return None
+    return clusters, clusters_com
 
 folder_ligands = [ "galactose", "lactose", "minoxidil", "nebivolol", "resveratrol" ]
 # We list all proteins / ligands file docking sort by ligands
@@ -107,6 +108,8 @@ for ligand in folder_ligands:
         print(f"\nMolecule {molecule} :")
         print(f"Nb of atoms : {len(mol_atoms)}")
         mol_clustering = clustering_molecule(mol_atoms)
+        clusters, clusters_com = mol_clustering
+        print(f"Nb of clusters : {len(clusters)}")
     print("===================================")
     
 
