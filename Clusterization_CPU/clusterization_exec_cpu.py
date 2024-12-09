@@ -2,6 +2,13 @@ import os
 import re
 from tqdm import tqdm
 
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.pyplot as plt
+from matplotlib.cm import get_cmap
+from matplotlib.colors import Normalize
+import numpy as np
+
 def parse_files(directory):
     result = dict()
     pattern = re.compile(r'(\d+)_(\d+)_(\d+)_(\w+)\.dlg')
@@ -99,8 +106,6 @@ def clustering_molecule(mol_atoms):
 
 def show_graphs_clusters(clusters, clusters_com, total_atoms):
     # We show the graph of the clusters
-    import matplotlib.pyplot as plt
-    from mpl_toolkits.mplot3d import Axes3D
     """fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     for cluster in clusters:
@@ -115,6 +120,7 @@ def show_graphs_clusters(clusters, clusters_com, total_atoms):
         ax.scatter(x, y, z)
     # Show non bloquant
     plt.show(block=False)"""
+    
     # We show the graph by color depending of the percentage in each cluster (cloud of points)
     """fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
@@ -135,15 +141,20 @@ def show_graphs_clusters(clusters, clusters_com, total_atoms):
         ax.scatter(x, y, z, c=[color])
     # Show non bloquant
     plt.show(block=False)"""
+    
     # We show the graph by color depending of the percentage in each cluster (Surface of the cluster)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    i = 0
+    cmap = get_cmap('coolwarm')  # Palette de couleurs du bleu au rouge
+    # Calculer les pourcentages
+    percentages = [len(cluster) / total_atoms for cluster in clusters if len(cluster) >= 3]
+    # Normalisation dynamique basée sur les pourcentages
+    norm = Normalize(vmin=min(percentages), vmax=max(percentages))
     for cluster in clusters:
-        x = list()
-        y = list()
-        z = list()
-        # Filter cluster with less than 3 atoms
+        x = []
+        y = []
+        z = []
+        # Filtrer les clusters avec moins de 3 atomes
         if len(cluster) < 3:
             continue
         for atom in cluster:
@@ -151,30 +162,68 @@ def show_graphs_clusters(clusters, clusters_com, total_atoms):
             x.append(float(atom_data[7]))
             y.append(float(atom_data[8]))
             z.append(float(atom_data[9]))
-        percentage = len(cluster) / total_atoms
-        # More the percentage is high, more the color is red
-        color = (1, 0, 0, percentage)
-        
-        ax.plot_trisurf(x, y, z, color=color)
+        percentage = len(cluster) / total_atoms  # Pourcentage du cluster actuel
+        color = cmap(norm(percentage))  # Obtenir la couleur normalisée    
+        ax.set_title("Cluster Surfaces (Color-coded by Percentage)") 
+        # Dessiner la surface triangulée avec la couleur normalisée
+        ax.plot_trisurf(x, y, z, color=color, alpha=0.8)
     # Show non bloquant
     plt.show(block=False)
+    
     # We show the graph by color depending of the percentage in each cluster (Only center of mass of the cluster)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    i = 0
-    for cluster_com in clusters_com:
+    cmap = get_cmap('coolwarm')  # Palette de couleurs du bleu au rouge
+    # Calculer les pourcentages
+    percentages = [len(cluster) / total_atoms for cluster in clusters]
+    # Normalisation dynamique basée sur les pourcentages
+    norm = Normalize(vmin=min(percentages), vmax=max(percentages))
+    for i, cluster_com in enumerate(clusters_com):
         x = cluster_com[0]
         y = cluster_com[1]
         z = cluster_com[2]
-        percentage = len(clusters[i]) / total_atoms
-        # More the percentage is high, more the color is red
-        color = (1, 0, 0, percentage)
-        
-        ax.scatter(x, y, z, c=[color])
-        i += 1
-    # Show non bloquant
-    plt.show(block=True)
+        percentage = percentages[i]  # Pourcentage du cluster actuel
+        # Obtenir la couleur normalisée
+        color = cmap(norm(percentage))  # Appliquer la colormap à la valeur normalisée
+        ax.scatter(x, y, z, color=[color], s=50)  # Ajout du point avec la couleur
+    ax.set_title("Clusters Center of Mass (Color-coded by Percentage)")
+    plt.show(block=False)
     
+    # We show the graph by color depending of the percentage in each cluster (Remove abnormal values)
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    cmap = get_cmap('coolwarm')  # Palette de couleurs du bleu au rouge
+    # Calculer les pourcentages
+    percentages = [len(cluster) / total_atoms for cluster in clusters if len(cluster) >= 3]
+    # Normalisation dynamique basée sur les pourcentages
+    norm = Normalize(vmin=min(percentages), vmax=max(percentages))
+    for cluster in clusters:
+        x = []
+        y = []
+        z = []
+        # Filtrer les clusters avec moins de 3 atomes
+        if len(cluster) < 3:
+            continue
+        for atom in cluster:
+            atom_data = atom.split()
+            x.append(float(atom_data[7]))
+            y.append(float(atom_data[8]))
+            z.append(float(atom_data[9]))         
+        z_threshold = 2
+        # Nettoyage des valeurs aberrantes
+        x, y, z = np.array(x), np.array(y), np.array(z)
+        z_mean, z_std = np.mean(z), np.std(z)
+        mask = np.abs(z - z_mean) <= z_threshold * z_std  # Filtre basé sur l'écart-type
+        x, y, z = x[mask], y[mask], z[mask]
+        if len(x) < 3:  # Vérifie si les points restants permettent de tracer une surface
+            continue
+        percentage = len(cluster) / total_atoms  # Pourcentage du cluster actuel
+        color = cmap(norm(percentage))  # Obtenir la couleur normalisée
+        # Dessiner la surface triangulée avec la couleur normalisée
+        ax.plot_trisurf(x, y, z, color=color, alpha=0.8)
+    ax.set_title("Cluster Surfaces (Cleaned and Color-coded by Percentage)")
+    plt.show(block=True)
+
 def show_tables_clusters(clusters, clusters_com, total_atoms):
     # We show the tables of the clusters
     i = 0
