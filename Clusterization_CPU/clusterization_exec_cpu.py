@@ -189,7 +189,7 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
         color = cmap(norm(percentage))  # Appliquer la colormap à la valeur normalisée
         ax.scatter(x, y, z, color=[color], s=100)  # Ajout du point avec la couleur
     ax.set_title(f"({molecule}) Clusters Center of Mass (Color-coded by Percentage)")
-    plt.show(block=False)
+    #plt.show(block=False)
     # Save the graph in a file in results folder
     fig.savefig(f"results/{ligand}_{molecule}_clusters_com.png")
     
@@ -226,7 +226,7 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
         # Dessiner la surface triangulée avec la couleur normalisée
         ax.plot_trisurf(x, y, z, color=color, alpha=0.8)
     ax.set_title(f"({molecule}) Cluster Surfaces (Cleaned and Color-coded by Percentage)")
-    plt.show(block=True)
+    #plt.show(block=True)
     # Save the graph in a file in results folder
     fig.savefig(f"results/{ligand}_{molecule}_clusters.png")
 
@@ -281,7 +281,7 @@ def print_cluster_info(mol_clustering):
 
 # We list all ligands
 folder_ligands = [ "galactose", "lactose", "minoxidil", "nebivolol", "resveratrol" ]
-folder_ligands = [ "galactose" ]
+#folder_ligands = [ "galactose" ]
 # We list all proteins / ligands file docking sort by ligands
 for ligand in folder_ligands:
     directory_ligand = f'data/Results_{ligand}'
