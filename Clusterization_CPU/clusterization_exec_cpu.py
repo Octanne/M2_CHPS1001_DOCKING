@@ -143,6 +143,9 @@ def show_graphs_clusters(clusters, clusters_com, total_atoms):
         x = list()
         y = list()
         z = list()
+        # Filter cluster with less than 3 atoms
+        if len(cluster) < 3:
+            continue
         for atom in cluster:
             atom_data = atom.split()
             x.append(float(atom_data[7]))
@@ -153,6 +156,22 @@ def show_graphs_clusters(clusters, clusters_com, total_atoms):
         color = (1, 0, 0, percentage)
         
         ax.plot_trisurf(x, y, z, color=color)
+    # Show non bloquant
+    plt.show(block=False)
+    # We show the graph by color depending of the percentage in each cluster (Only center of mass of the cluster)
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    i = 0
+    for cluster_com in clusters_com:
+        x = cluster_com[0]
+        y = cluster_com[1]
+        z = cluster_com[2]
+        percentage = len(clusters[i]) / total_atoms
+        # More the percentage is high, more the color is red
+        color = (1, 0, 0, percentage)
+        
+        ax.scatter(x, y, z, c=[color])
+        i += 1
     # Show non bloquant
     plt.show(block=True)
     
