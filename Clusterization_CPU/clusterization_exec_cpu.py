@@ -245,7 +245,7 @@ def show_tables_clusters(molecule, clusters, clusters_com, total_atoms):
         i += 1
     # Save the data in a file in results folder
     with open(f"results/{ligand}_{molecule}_results.txt", 'w') as f:
-        f.write(f"Molecule {molecule} :\n")
+        f.write(f"Molecule : {molecule}\n")
         f.write(f"Nb of atoms : {total_atoms}\n")
         f.write(f"Nb of clusters : {len(clusters)}\n")
         f.write(f"Total percentage : {total_percentage:03.4f}%\n")
@@ -272,7 +272,7 @@ def process_molecule(args):
 
 def print_cluster_info(mol_clustering):
     molecule, mol_atoms, clusters, clusters_com = mol_clustering    
-    print(f"Molecule {molecule} :")
+    print(f"Molecule : {molecule}")
     print(f"Nb of atoms : {len(mol_atoms)}")
     print(f"Nb of clusters : {len(clusters)}")
     # Show graphs and tables of statistics of clusters repartition
