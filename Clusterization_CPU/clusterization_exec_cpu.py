@@ -10,6 +10,7 @@ from matplotlib.colors import Normalize
 import numpy as np
 
 from multiprocessing import Pool
+import multiprocessing as mp
 
 def parse_files(directory):
     result = dict()
@@ -249,13 +250,14 @@ def show_tables_clusters(molecule, clusters, clusters_com, total_atoms):
         f.write(f"Nb of clusters : {len(clusters)}\n")
         f.write(f"Total percentage : {total_percentage:03.4f}%\n")
         i = 0
+        f.write("| Cluster ID | Nb of atoms | Center of mass | Percentage |\n")
         for cluster in clusters:
-            f.write(f"Cluster {i:04d} :")
-            f.write(f"Nb of atoms : {len(cluster):04d}")
+            f.write(f"| Cluster {i:04d} |")
+            f.write(f" {len(cluster):04d} |")
             com_cluster = f"({clusters_com[i][0]:+08.2f} {clusters_com[i][1]:+08.2f} {clusters_com[i][2]:+08.2f})"
-            f.write(f"Center of mass : {com_cluster}")
+            f.write(f" {com_cluster} |")
             percentage = len(cluster) / total_atoms * 100
-            f.write(f"Percentage : {percentage:03.4f}%")
+            f.write(f" {percentage:03.4f}% |\n")
             i += 1
 
 def process_molecule(args):
@@ -292,7 +294,7 @@ for ligand in folder_ligands:
     tasks = [ (molecule, parsed_data) for molecule in parsed_data ]
 
     # Use multiprocessing pool to process each molecule
-    with Pool(processes=8) as pool:  # Adjust number of processes as needed
+    with Pool(processes=mp.cpu_count()) as pool:  # Adjust number of processes as needed
         results_async = pool.map(process_molecule, tasks)
         
     # Print the results
