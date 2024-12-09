@@ -241,7 +241,7 @@ def show_tables_clusters(molecule, clusters, clusters_com, total_atoms):
         print(f"Center of mass : {com_cluster}", end=' | ')
         percentage = len(cluster) / total_atoms * 100
         total_percentage += percentage
-        print(f"Percentage : {percentage:03.4f}%")
+        print(f"Percentage : {percentage:08.4f}%")
         i += 1
     # Save the data in a file in results folder
     with open(f"results/{ligand}_{molecule}_results.txt", 'w') as f:
@@ -257,7 +257,7 @@ def show_tables_clusters(molecule, clusters, clusters_com, total_atoms):
             com_cluster = f"({clusters_com[i][0]:+08.2f} {clusters_com[i][1]:+08.2f} {clusters_com[i][2]:+08.2f})"
             f.write(f" {com_cluster} |")
             percentage = len(cluster) / total_atoms * 100
-            f.write(f" {percentage:03.4f}% |\n")
+            f.write(f" {percentage:08.4f}% |\n")
             i += 1
 
 def process_molecule(args):
