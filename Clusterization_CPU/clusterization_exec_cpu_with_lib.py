@@ -1,5 +1,6 @@
 import os
 import re
+from tqdm import tqdm
 
 def parse_files(directory):
     result = dict()
@@ -46,6 +47,7 @@ def calculate_COM_atom(atom):
     atom_x = atom_data[7]
     atom_y = atom_data[8]
     atom_z = atom_data[9]
+    #print(f"Atom : {atom_x} {atom_y} {atom_z}")
     return [float(atom_x), float(atom_y), float(atom_z)]
 
 def calculate_COM_cluster(cluster):
@@ -68,7 +70,7 @@ def clustering_molecule(mol_atoms):
     clusters_com = list()
     
     i = 0
-    for atom in mol_atoms:
+    for atom in tqdm(mol_atoms):
         # We get the atom center of mass
         atom_com = calculate_COM_atom(atom)
         # We get the cluster center of mass
@@ -77,10 +79,12 @@ def clustering_molecule(mol_atoms):
         for cluster_com in clusters_com:
             # We calculate the distance between the atom and the cluster center of mass
             distance = ((atom_com[0] - cluster_com[0])**2 + (atom_com[1] - cluster_com[1])**2 + (atom_com[2] - cluster_com[2])**2)**0.5
-            if distance < 4:
+            
+            if distance < 10:
                 clusters[iCluster].append(atom)
                 # We update the cluster center of mass
                 clusters_com[iCluster] = calculate_COM_cluster(clusters[iCluster])
+                find_cluster = True
                 break
             iCluster += 1
         # If the atom is not in a cluster, we create a new cluster
@@ -88,12 +92,13 @@ def clustering_molecule(mol_atoms):
             clusters.append(list())
             clusters_com.append(atom_com)
             clusters[iCluster].append(atom)
-            print(f"New cluster {iCluster} started with atom {i} and center of mass {atom_com}")
+            #print(f"New cluster {iCluster} started with atom {i} and center of mass {atom_com}")
         i += 1
     
     return clusters, clusters_com
 
 folder_ligands = [ "galactose", "lactose", "minoxidil", "nebivolol", "resveratrol" ]
+folder_ligands = [ "galactose" ]
 # We list all proteins / ligands file docking sort by ligands
 for ligand in folder_ligands:
     directory_ligand = f'data/Results_{ligand}'
