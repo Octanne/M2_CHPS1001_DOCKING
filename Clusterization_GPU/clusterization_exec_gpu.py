@@ -101,7 +101,7 @@ def clustering_molecule_gpu(atom_coms, threshold=10, point_spacing=POINT_SPACING
     """
     Clustering using GPU for atom-to-cluster assignments and COM updates.
     """
-    num_atoms = atom_coms.shape[0]
+    num_atoms = len(atom_coms)
     clusters = np.zeros((max_clusters, num_atoms), dtype=np.int32)  # Cluster membership matrix
     cluster_coms = np.zeros((max_clusters, 3), dtype=np.float32)  # Cluster COMs
     cluster_sizes = np.zeros(max_clusters, dtype=np.int32)  # Number of atoms per cluster
