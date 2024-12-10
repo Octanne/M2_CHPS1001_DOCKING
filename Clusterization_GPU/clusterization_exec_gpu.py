@@ -1,149 +1,80 @@
+
+# This script is the GPU version of the clusterization algorithm.
+# Lib dependencies: cupy, matplotlib, numpy
+
 import os
 import re
-
-# Installation des dépendances : numba, tqdm, matplotlib
-
-from multiprocessing import Pool
-import multiprocessing as mp
-import numpy as np
-from numba import cuda, jit
-from tqdm import tqdm
+import cupy as cp
+import matplotlib.pyplot as plt
 from matplotlib.cm import get_cmap
 from matplotlib.colors import Normalize
-import matplotlib.pyplot as plt
+import numpy as np
+
+from multiprocessing import Pool
 import time
 
-POINT_SPACING=1 # Point spacing in Angstroms
-RESULTS_DIR = "results/results_gpu"  # Results directory
+POINT_SPACING = 0.375  # Point spacing in Angstroms
+RESULT_FOLDER = "results/results_gpu"
 
-# Définir le mode de démarrage multiprocessing
-def set_spawn_method():
-    try:
-        mp.set_start_method('spawn', force=True)
-    except RuntimeError:
-        pass
-
-# Parsing des fichiers
 def parse_files(directory):
+    result = dict()
     pattern = re.compile(r'(\d+)_(\d+)_(\d+)_(\w+)\.dlg')
-    result = {}
+
+    # We iterate over all files in the directory
     for filename in os.listdir(directory):
         match = pattern.match(filename)
         if match:
             _, _, _, molecule_name = match.groups()
-            result.setdefault(molecule_name, []).append(filename)
+            if result.get(molecule_name) == None:
+                result[molecule_name] = list()
+            result[molecule_name].append(filename)
     return result
 
-# Filtrage des molécules par score énergétique
-def filter_molecule(mol_files, directory_ligand):
-    filtered_atoms = []
+def filter_molecule(molecule, mol_files, directory_ligand):
+    mol_atoms = list()  # We store the atoms of the molecule that are interesting
+    # We read each file for the molecule
     for file in mol_files:
         with open(f"{directory_ligand}/{file}", 'r') as f:
             lines = f.readlines()
-            energy = float('inf')
             for line in lines:
-                if line.startswith("DOCKED: USER    Estimated Free Energy of Binding"):
-                    energy = float(line.split()[8])
-                if energy < 0 and line.startswith("DOCKED: ATOM"):
-                    filtered_atoms.append(line)
-    return filtered_atoms
+                if line.startswith("DOCKED: ATOM"):
+                    mol_atoms.append(line)
+    return mol_atoms
 
-@cuda.jit
-def assign_atoms_to_clusters(atom_coms, cluster_coms, cluster_sizes, clusters, point_spacing, threshold):
-    """
-    CUDA kernel to assign atoms to clusters based on distances.
-    """
-    atom_idx = cuda.grid(1)  # Each thread handles one atom
-    nb_atoms = atom_coms.shape[0]
-    if atom_idx < nb_atoms:
-        min_distance = float('inf')
-        cluster_idx = -1
+def calculate_COM_atom(atom):
+    atom_data = atom.split()
+    atom_x = float(atom_data[7])
+    atom_y = float(atom_data[8])
+    atom_z = float(atom_data[9])
+    return cp.array([atom_x, atom_y, atom_z], dtype=cp.float32)
 
-        # Find the closest cluster
-        for j in range(nb_atoms):
-            if cluster_sizes[j] > 0:  # Check if the cluster exists
-                dx = atom_coms[atom_idx, 0] - cluster_coms[j, 0]
-                dy = atom_coms[atom_idx, 1] - cluster_coms[j, 1]
-                dz = atom_coms[atom_idx, 2] - cluster_coms[j, 2]
-                distance = (dx ** 2 + dy ** 2 + dz ** 2) ** 0.5
+def calculate_COM_cluster(cluster):
+    cluster_com = cp.zeros(3, dtype=cp.float32)
+    for atom in cluster:
+        cluster_com += calculate_COM_atom(atom)
+    return cluster_com / len(cluster)
 
-                if distance < min_distance:
-                    min_distance = distance
-                    cluster_idx = j
+def clustering_molecule(mol_atoms):
+    clusters = []
+    clusters_com = []
+    mol_atoms_com = cp.array([calculate_COM_atom(atom) for atom in mol_atoms])
 
-        # Check if the atom belongs to the closest cluster
-        if min_distance * point_spacing < threshold:
-            cuda.atomic.add(cluster_sizes, cluster_idx, 1)
-            clusters[cluster_idx, atom_idx] = 1  # Assign atom to the cluster
+    # Distance matrix computation (GPU parallelized)
+    for i, atom_com in enumerate(mol_atoms_com):
+        distances = cp.linalg.norm(mol_atoms_com - atom_com, axis=1) * POINT_SPACING
+        cluster_idx = cp.argwhere(distances < 10).flatten()
 
-
-@cuda.jit
-def update_cluster_coms(atom_coms, clusters, cluster_sizes, cluster_coms):
-    """
-    CUDA kernel to update cluster center of masses (COMs) based on assigned atoms.
-    """
-    atom_nb = len(atom_coms)
-    cluster_idx = cuda.grid(1)  # Each thread handles one cluster
-    if cluster_idx < clusters.shape[0]:
-        cluster_size = cluster_sizes[cluster_idx]
-        if cluster_size > 0:
-            sum_x, sum_y, sum_z = 0.0, 0.0, 0.0
-            for atom_idx in range(atom_nb):
-                if clusters[cluster_idx, atom_idx] == 1:  # Atom belongs to this cluster
-                    sum_x += atom_coms[atom_idx, 0]
-                    sum_y += atom_coms[atom_idx, 1]
-                    sum_z += atom_coms[atom_idx, 2]
-
-            cluster_coms[cluster_idx, 0] = sum_x / cluster_size
-            cluster_coms[cluster_idx, 1] = sum_y / cluster_size
-            cluster_coms[cluster_idx, 2] = sum_z / cluster_size
-
-def convert_atom_to_com(atom_coms):
-    """
-    Convert atom objects to center of mass (COM) coordinates.
-    """
-    atom_coms = np.array([list(map(float, atom.split()[7:10])) for atom in atom_coms])
-
-def clustering_molecule_gpu(atom_coms, threshold=10, point_spacing=POINT_SPACING, max_clusters=1000):
-    """
-    Clustering using GPU for atom-to-cluster assignments and COM updates.
-    """
-    num_atoms = len(atom_coms)
-    clusters = np.zeros((max_clusters, num_atoms), dtype=np.int32)  # Cluster membership matrix
-    cluster_coms = np.zeros((max_clusters, 3), dtype=np.float32)  # Cluster COMs
-    cluster_sizes = np.zeros(max_clusters, dtype=np.int32)  # Number of atoms per cluster
+        if len(cluster_idx) == 0:  # New cluster
+            clusters.append([mol_atoms[i]])
+            clusters_com.append(mol_atoms_com[i])
+        else:  # Add atom to existing cluster
+            for idx in cluster_idx:
+                clusters[idx].append(mol_atoms[i])
+                clusters_com[idx] = calculate_COM_cluster(clusters[idx])
     
-    # Convert atom_coms to device array
-    atom_coms = convert_atom_to_com(atom_coms)
-    
-    d_atom_coms = cuda.to_device(atom_coms)
-    d_cluster_coms = cuda.to_device(cluster_coms)
-    d_cluster_sizes = cuda.to_device(cluster_sizes)
-    d_clusters = cuda.to_device(clusters)
+    return clusters, clusters_com
 
-    threads_per_block = 128
-    blocks_per_grid = (num_atoms + threads_per_block - 1) // threads_per_block
-
-    for iteration in range(10):
-        assign_atoms_to_clusters[blocks_per_grid, threads_per_block](
-            d_atom_coms, d_cluster_coms, d_cluster_sizes, d_clusters, point_spacing, threshold
-        )
-        cuda.synchronize()  # Ensure no errors in the kernel
-        
-        cluster_blocks = (max_clusters + threads_per_block - 1) // threads_per_block
-        update_cluster_coms[cluster_blocks, threads_per_block](
-            d_atom_coms, d_clusters, d_cluster_sizes, d_cluster_coms
-        )
-        cuda.synchronize()
-
-    # Copy back results
-    clusters = d_clusters.copy_to_host()
-    cluster_coms = d_cluster_coms.copy_to_host()
-    cluster_sizes = d_cluster_sizes.copy_to_host()
-
-    return clusters, cluster_coms
-
-def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):  
+def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
     # We show the graph by color depending of the percentage in each cluster (Only center of mass of the cluster)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
@@ -163,7 +94,7 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
     ax.set_title(f"({molecule}) Clusters Center of Mass (Color-coded by Percentage)")
     #plt.show(block=False)
     # Save the graph in a file in results folder
-    fig.savefig(f"{RESULTS_DIR}/{ligand}_{molecule}_clusters_com.png")
+    fig.savefig(f"{RESULT_FOLDER}/{ligand}_{molecule}_clusters_com.png")
     
     # We show the graph by color depending of the percentage in each cluster (Remove abnormal values)
     fig = plt.figure()
@@ -181,9 +112,10 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
         if len(cluster) < 3:
             continue
         for atom in cluster:
-            x.append(atom[0])
-            y.append(atom[1])
-            z.append(atom[2])        
+            atom_data = atom.split()
+            x.append(float(atom_data[7]))
+            y.append(float(atom_data[8]))
+            z.append(float(atom_data[9]))         
         z_threshold = 2
         # Nettoyage des valeurs aberrantes
         x, y, z = np.array(x), np.array(y), np.array(z)
@@ -199,9 +131,16 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
     ax.set_title(f"({molecule}) Cluster Surfaces (Cleaned and Color-coded by Percentage)")
     #plt.show(block=True)
     # Save the graph in a file in results folder
-    fig.savefig(f"{RESULTS_DIR}/{ligand}_{molecule}_clusters.png")
+    fig.savefig(f"{RESULT_FOLDER}/{ligand}_{molecule}_clusters.png")
     # We close the graph
     plt.close('all')
+
+def process_molecule(args):
+    molecule, parsed_data, directory_ligand = args
+    mol_files = parsed_data[molecule]
+    mol_atoms = filter_molecule(molecule, mol_files, directory_ligand)
+    clusters, clusters_com = clustering_molecule(mol_atoms)
+    return molecule, mol_atoms, clusters, clusters_com
 
 def show_tables_clusters(molecule, clusters, clusters_com, total_atoms):
     # We show the tables of the clusters
@@ -217,7 +156,7 @@ def show_tables_clusters(molecule, clusters, clusters_com, total_atoms):
         print(f"Percentage : {percentage:08.4f}%")
         i += 1
     # Save the data in a file in results folder
-    with open(f"{RESULTS_DIR}/{ligand}_{molecule}_results.txt", 'w') as f:
+    with open(f"{RESULT_FOLDER}/{ligand}_{molecule}_results.txt", 'w') as f:
         f.write(f"Molecule : {molecule}\n")
         f.write(f"Nb of atoms : {total_atoms}\n")
         f.write(f"Nb of clusters : {len(clusters)}\n")
@@ -233,54 +172,61 @@ def show_tables_clusters(molecule, clusters, clusters_com, total_atoms):
             f.write(f" {percentage:08.4f}% |\n")
             i += 1
 
-# Traitement d'une molécule
-def process_molecule(args):
-    molecule, parsed_data, directory_ligand = args
-    mol_files = parsed_data[molecule]
-    mol_atoms = filter_molecule(mol_files, directory_ligand)
-    clusters, centers = clustering_molecule_gpu(mol_atoms)
-    return molecule, clusters, centers, len(mol_atoms)
+def print_cluster_info(mol_clustering):
+    molecule, mol_atoms, clusters, clusters_com = mol_clustering    
+    print(f"Molecule : {molecule}")
+    print(f"Nb of atoms : {len(mol_atoms)}")
+    print(f"Nb of clusters : {len(clusters)}")
+    show_tables_clusters(molecule, clusters, clusters_com, len(mol_atoms))
+    show_graphs_clusters(molecule, clusters, clusters_com, len(mol_atoms))
 
-# We save the time in a file
+# Time tracking
 time_tabs = dict()
 start_time = 0
+
 def check_time(check_pt):
     global start_time
     if start_time == 0:
         start_time = time.time()
     else:
         end_time = time.time()
-        time_tabs[f"{len(time_tabs)}-"+check_pt] = end_time - start_time
+        time_tabs[f"{len(time_tabs)}-{check_pt}"] = end_time - start_time
         start_time = end_time
+
 def save_time():
-    with open(f"{RESULTS_DIR}/time_gpu.txt", 'w') as f:
+    with open(f"{RESULT_FOLDER}/time_gpu.txt", 'w') as f:
         for time in time_tabs:
             f.write(f"{time} : {time_tabs[time]}\n")
 
-# Main
-if __name__ == "__main__":
-    # We create the results directory if it does not exist
-    if not os.path.exists(RESULTS_DIR):
-        os.makedirs(RESULTS_DIR)
-    set_spawn_method()
-    folder_ligands = ["galactose", "lactose", "minoxidil", "nebivolol", "resveratrol"]
+# We list all ligands
+folder_ligands = ["galactose", "lactose", "minoxidil", "nebivolol", "resveratrol"]
+
+# We create the results folder
+if not os.path.exists(RESULT_FOLDER):
+    os.makedirs(RESULT_FOLDER)
+
+for ligand in folder_ligands:
+    directory_ligand = f'data/Results_{ligand}'
+    check_time(f"start-{ligand}")
+    print("===================================")
+    print(f"Ligand : {ligand}")
     
-    for ligand in folder_ligands:
-        check_time("start-"+ligand)
-        directory_ligand = f"data/Results_{ligand}"
-        parsed_data = parse_files(directory_ligand)
-        print("====================================")
-        print(f"Processing ligand {ligand}...")
+    parsed_data = parse_files(directory_ligand)
+    tasks = [(molecule, parsed_data, directory_ligand) for molecule in parsed_data]
 
-        tasks = [(molecule, parsed_data, directory_ligand) for molecule in parsed_data]
-        
-        with Pool(processes=max(1, mp.cpu_count() // 4)) as pool:
-            results = pool.map(process_molecule, tasks)
-
-        for molecule, clusters, centers, total_atoms in results:
-            show_tables_clusters(molecule, clusters, centers, total_atoms)
-            show_graphs_clusters(molecule, clusters, centers, total_atoms)
-        check_time("end-"+ligand)
-        print(f"End of processing ligand {ligand}!")
-        print("====================================")
-        save_time()
+    # Use multiprocessing pool to process each molecule on the GPU
+    with Pool(processes=1) as pool:  # Adjust processes if needed
+        results_async = pool.map(process_molecule, tasks)
+    
+    # Print the results
+    results = []
+    for mol_clustering in results_async:
+        print(f"Processing molecule {mol_clustering[0]} done !")
+        results.append(mol_clustering)
+    
+    for result in results:
+        print_cluster_info(result)
+    
+    print("===================================")
+    check_time(f"end-{ligand}")
+    save_time()
