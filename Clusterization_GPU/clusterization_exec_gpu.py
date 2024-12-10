@@ -271,7 +271,10 @@ def process_molecule(args):
     return mol_clustering
 
 def print_cluster_info(mol_clustering):
-    molecule, mol_atoms, clusters, clusters_com = mol_clustering    
+    molecule, mol_atoms, clusters, clusters_com = mol_clustering
+    # We get back data to the CPU
+    clusters = [cluster.cpu().numpy() for cluster in clusters]
+    clusters_com = clusters_com.cpu().numpy()  
     print(f"Molecule : {molecule}")
     print(f"Nb of atoms : {len(mol_atoms)}")
     print(f"Nb of clusters : {len(clusters)}")
@@ -325,6 +328,7 @@ for ligand in folder_ligands:
     print("===================================")
     check_time(f"end-{ligand}")
     
+save_time()
 
 ## Filtration d'abord conserver juste les fichiers avec le meilleur score (négatif car viable)
 ## Faire parcours des fichiers 

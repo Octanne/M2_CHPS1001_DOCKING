@@ -326,7 +326,7 @@ for ligand in folder_ligands:
     print("===================================")
     check_time(f"end-{ligand}")
     
-    
+save_time()
 
 ## Filtration d'abord conserver juste les fichiers avec le meilleur score (négatif car viable)
 ## Faire parcours des fichiers 
