@@ -1,0 +1,8 @@
+Molecule : 5VYC
+Nb of atoms : 19000
+Nb of clusters : 3
+Total percentage : 100.0000%
+| Cluster ID | Nb of atoms | Center of mass | Percentage |
+| Cluster 0000 | 10036 | (-0019.33 +0019.03 -0022.03) | 052.8211% |
+| Cluster 0001 | 6263 | (-0011.18 +0014.45 -0028.24) | 032.9632% |
+| Cluster 0002 | 2701 | (-0021.44 +0024.77 -0030.57) | 014.2158% |

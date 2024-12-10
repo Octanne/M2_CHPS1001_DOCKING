@@ -218,7 +218,7 @@ def check_time(check_pt):
     else:
         time_tabs[check_pt] = time.time()
 def save_time():
-    with open(f"{RESULT_FOLDER}/time_gpu.txt", 'w') as f:
+    with open(f"{RESULT_FOLDER}/time_cpu.txt", 'w') as f:
         for time in time_tabs:
             f.write(f"{time} : {time_tabs[time]}\n")
 
