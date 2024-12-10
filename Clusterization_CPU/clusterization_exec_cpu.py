@@ -254,7 +254,7 @@ for ligand in folder_ligands:
     tasks = [ (molecule, parsed_data) for molecule in parsed_data ]
 
     # Use multiprocessing pool to process each molecule
-    with Pool(processes=mp.cpu_count()) as pool:  # Adjust number of processes as needed
+    with Pool(processes=max(1, mp.cpu_count() // 4)) as pool:  # Adjust number of processes as needed
         results_async = pool.map(process_molecule, tasks)
         
     # Print the results
