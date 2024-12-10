@@ -71,51 +71,50 @@ def calculate_COM_atom_gpu(atom):
 def calculate_COM_cluster_gpu(cluster):
     """Calculate the center of mass of a cluster using PyTorch."""
     cluster_coords = torch.stack(cluster)
-    # Increase precision to avoid overflow in large molecules
-    cluster_coords = cluster_coords.double()
     return cluster_coords.mean(dim=0)
 
-def clustering_molecule_gpu(mol_atoms):
+def clustering_molecule_gpu(mol_atoms, threshold=10.0):
     """
     Cluster molecules using GPU acceleration with PyTorch.
     """
-    # Create lists to store clusters and their centers of mass
-    clusters = []
-    clusters_com = []
+    # Convert all atom data to a PyTorch tensor on the GPU
+    mol_coords = torch.stack([calculate_COM_atom_gpu(atom) for atom in tqdm(mol_atoms)]).to('cuda')  # Shape: (num_atoms, 3)
 
-    # Convert all atom data to PyTorch tensors for GPU processing
-    mol_coords = [calculate_COM_atom_gpu(atom) for atom in tqdm(mol_atoms)]
-    mol_coords = torch.stack(mol_coords)  # Shape: (num_atoms, 3)
+    # Initialize cluster assignment and centers of mass (COM)
+    clusters = torch.empty((0, mol_coords.size(1)), device='cuda')  # Shape: (num_clusters, 3)
+    cluster_assignments = torch.full((mol_coords.size(0),), -1, dtype=torch.long, device='cuda')  # -1 means unassigned
 
-    # Initialize cluster assignment and iterate over atoms
-    for atom_coords in tqdm(mol_coords):
-        find_cluster = False
-        
-        if clusters_com:  # Skip distance calculation if no clusters exist yet
-            # Stack all cluster COMs for distance calculation
-            cluster_coms_tensor = torch.stack(clusters_com)  # Shape: (num_clusters, 3)
+    # Iterate over atoms
+    for i, atom_coords in enumerate(tqdm(mol_coords)):
+        if clusters.size(0) > 0:  # If clusters exist
+            # Calculate distances between the atom and all cluster COMs
+            distances = torch.sqrt(((clusters - atom_coords) ** 2).sum(dim=1))  # Shape: (num_clusters,)
 
-            # Calculate distances to all clusters
-            # Euclidean distance between atom and each cluster COM
-            distances = torch.sqrt(((cluster_coms_tensor - atom_coords) ** 2).sum(dim=1))  # Shape: (num_clusters,)
-
-            # Check if atom belongs to any cluster (distance threshold = 10)
+            # Check if the atom belongs to any cluster
             min_distance, cluster_idx = torch.min(distances, dim=0)
-            if min_distance < 10:
-                clusters[cluster_idx].append(atom_coords)
-                clusters_com[cluster_idx] = calculate_COM_cluster_gpu(clusters[cluster_idx])
-                find_cluster = True
+            if min_distance < threshold:
+                # Assign the atom to the nearest cluster
+                cluster_assignments[i] = cluster_idx
 
-        # If the atom doesn't belong to any cluster, create a new one
-        if not find_cluster:
-            clusters.append([atom_coords])
-            clusters_com.append(atom_coords)
+                # Update the cluster center of mass
+                cluster_members = mol_coords[cluster_assignments == cluster_idx]  # All members of the cluster
+                clusters[cluster_idx] = cluster_members.mean(dim=0)  # Recalculate COM
+            else:
+                # Create a new cluster
+                clusters = torch.cat((clusters, atom_coords.unsqueeze(0)), dim=0)
+                cluster_assignments[i] = clusters.size(0) - 1
+        else:
+            # Create the first cluster
+            clusters = atom_coords.unsqueeze(0)  # Initialize the first cluster
+            cluster_assignments[i] = 0
 
-    # Convert cluster lists to tensors for consistency
-    clusters = [torch.stack(cluster) for cluster in clusters]
-    clusters_com = torch.stack(clusters_com)
+    # Group atoms into their respective clusters
+    final_clusters = []
+    for cluster_idx in range(clusters.size(0)):
+        cluster_members = mol_coords[cluster_assignments == cluster_idx]
+        final_clusters.append(cluster_members)
 
-    return clusters, clusters_com
+    return final_clusters, clusters
 
 def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
     # We show the graph of the clusters
