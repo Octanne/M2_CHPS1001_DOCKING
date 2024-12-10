@@ -15,7 +15,12 @@ import torch
 import time
 
 # We put multiprocessing in spawn mode
-mp.set_start_method('spawn')
+def set_spawn_method():
+    try:
+        mp.set_start_method('spawn', force=True)
+    except RuntimeError as e:
+        # Ignore if the context is already set
+        pass
 
 def parse_files(directory):
     result = dict()
@@ -288,53 +293,55 @@ def print_cluster_info(mol_clustering):
     show_tables_clusters(molecule, clusters, clusters_com, len(mol_atoms))
     show_graphs_clusters(molecule, clusters, clusters_com, len(mol_atoms))
 
-# We save the time in a file
-time_tabs = dict()
-start_time = 0
-def check_time(check_pt):
-    global start_time
-    if start_time == 0:
-        start_time = time.time()
-    else:
-        end_time = time.time()
-        time_tabs[f"{len(time_tabs)}-"+check_pt] = end_time - start_time
-        start_time = end_time
-def save_time():
-    with open("results/time_gpu.txt", 'w') as f:
-        for time in time_tabs:
-            f.wirte(f"{time} : {time_tabs[time]}\n")
-            
-# We list all ligands
-folder_ligands = [ "galactose", "lactose", "minoxidil", "nebivolol", "resveratrol" ]
-#folder_ligands = [ "galactose" ]
-# We list all proteins / ligands file docking sort by ligands
-check_time("start")
-for ligand in folder_ligands:
-    directory_ligand = f'data/Results_{ligand}'
-    check_time(f"start-{ligand}")
-    print("===================================")
-    print(f"Ligand : {ligand}")
+if __name__ == "__main__":
+    set_spawn_method()
     
-    parsed_data = parse_files(directory_ligand)
-    
-    # Prepare the data for the multiprocessing
-    tasks = [ (molecule, parsed_data) for molecule in parsed_data ]
-
-    # Use multiprocessing pool to process each molecule
-    with Pool(processes=mp.cpu_count()) as pool:  # Adjust number of processes as needed
-        results_async = pool.map(process_molecule, tasks)
+    # We save the time in a file
+    time_tabs = dict()
+    start_time = 0
+    def check_time(check_pt):
+        global start_time
+        if start_time == 0:
+            start_time = time.time()
+        else:
+            end_time = time.time()
+            time_tabs[f"{len(time_tabs)}-"+check_pt] = end_time - start_time
+            start_time = end_time
+    def save_time():
+        with open("results/time_gpu.txt", 'w') as f:
+            for time in time_tabs:
+                f.wirte(f"{time} : {time_tabs[time]}\n")
+                
+    # We list all ligands
+    folder_ligands = [ "galactose", "lactose", "minoxidil", "nebivolol", "resveratrol" ]
+    #folder_ligands = [ "galactose" ]
+    # We list all proteins / ligands file docking sort by ligands
+    check_time("start")
+    for ligand in folder_ligands:
+        directory_ligand = f'data/Results_{ligand}'
+        check_time(f"start-{ligand}")
+        print("===================================")
+        print(f"Ligand : {ligand}")
         
-    # Print the results
-    results = list()
-    for mol_clustering in results_async:
-        print(f"Processing molecule {mol_clustering[0]} done !")
-        results.append(mol_clustering)
-    for result in results:
-        print_cluster_info(result)
-    print("===================================")
-    check_time(f"end-{ligand}")
-    
-save_time()
+        parsed_data = parse_files(directory_ligand)
+        
+        # Prepare the data for the multiprocessing
+        tasks = [ (molecule, parsed_data) for molecule in parsed_data ]
+
+        # Use multiprocessing pool to process each molecule
+        with Pool(processes=mp.cpu_count()) as pool:  # Adjust number of processes as needed
+            results_async = pool.imap(process_molecule, tasks)
+            
+        # Print the results
+        results = list()
+        for mol_clustering in results_async:
+            print(f"Processing molecule {mol_clustering[0]} done !")
+            results.append(mol_clustering)
+        for result in results:
+            print_cluster_info(result)
+        print("===================================")
+        check_time(f"end-{ligand}")
+        save_time()
 
 ## Filtration d'abord conserver juste les fichiers avec le meilleur score (négatif car viable)
 ## Faire parcours des fichiers 
