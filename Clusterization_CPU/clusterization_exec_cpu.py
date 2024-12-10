@@ -37,7 +37,7 @@ def print_molecule(directory):
             print(f"{file}")
         molecule_nb += 1
 
-def filter_molecule(molecule, mol_files):
+def filter_molecule(molecule, mol_files, directory_ligand):
     mol_atoms = list() # We store the atoms of the molecule that or interesting
     # We read each file for the molecule
     for file in mol_files:
@@ -191,13 +191,14 @@ def show_tables_clusters(molecule, clusters, clusters_com, total_atoms):
             i += 1
 
 def process_molecule(args):
-    molecule, parsed_data = args
+    molecule, parsed_data, directory_ligand, ligand = args
+    check_time(f"{ligand}_{molecule}") # We start the molecule time
     mol_files = parsed_data[molecule]
-    mol_atoms = filter_molecule(molecule, mol_files)
+    mol_atoms = filter_molecule(molecule, mol_files, directory_ligand)
     # We do now from the mol_atoms list the clustering
     mol_clustering = clustering_molecule(mol_atoms)
     mol_clustering = (molecule, mol_atoms, *mol_clustering)
-    
+    check_time(f"{ligand}_{molecule}") # We stop the molecule time
     return mol_clustering
 
 def print_cluster_info(mol_clustering):
@@ -211,38 +212,34 @@ def print_cluster_info(mol_clustering):
 
 # We save the time in a file
 time_tabs = dict()
-start_time = 0
 def check_time(check_pt):
-    global start_time
-    if start_time == 0:
-        start_time = time.time()
+    if check_pt in time_tabs.keys():
+        time_tabs[check_pt] = time.time() - time_tabs[check_pt]
     else:
-        end_time = time.time()
-        time_tabs[f"{len(time_tabs)}-"+check_pt] = end_time - start_time
-        start_time = end_time
+        time_tabs[check_pt] = time.time()
 def save_time():
-    with open(f"{RESULT_FOLDER}/time_cpu.txt", 'w') as f:
+    with open(f"{RESULT_FOLDER}/time_gpu.txt", 'w') as f:
         for time in time_tabs:
             f.write(f"{time} : {time_tabs[time]}\n")
 
 # We list all ligands
 folder_ligands = [ "galactose", "lactose", "minoxidil", "nebivolol", "resveratrol" ]
-#folder_ligands = [ "galactose" ]
-# We list all proteins / ligands file docking sort by ligands
-check_time("start")
+
 # We create the results folder
 if not os.path.exists(RESULT_FOLDER):
     os.makedirs(RESULT_FOLDER)
+check_time("total") # We start the total time
+# We list all proteins / ligands file docking sort by ligands
 for ligand in folder_ligands:
     directory_ligand = f'data/Results_{ligand}'
-    check_time(f"start-{ligand}")
     print("===================================")
     print(f"Ligand : {ligand}")
+    check_time(ligand) # We start the ligand time
     
     parsed_data = parse_files(directory_ligand)
     
     # Prepare the data for the multiprocessing
-    tasks = [ (molecule, parsed_data) for molecule in parsed_data ]
+    tasks = [ (molecule, parsed_data, directory_ligand, ligand) for molecule in parsed_data ]
 
     # Use multiprocessing pool to process each molecule
     with Pool(processes=max(1, mp.cpu_count() // 4)) as pool:  # Adjust number of processes as needed
@@ -256,8 +253,11 @@ for ligand in folder_ligands:
     for result in results:
         print_cluster_info(result)
     print("===================================")
-    check_time(f"end-{ligand}")
+    check_time(ligand) # We stop the ligand time
     save_time()
+    
+check_time("total") # We stop the total time
+save_time()
 
 ## Filtration d'abord conserver juste les fichiers avec le meilleur score (négatif car viable)
 ## Faire parcours des fichiers 
