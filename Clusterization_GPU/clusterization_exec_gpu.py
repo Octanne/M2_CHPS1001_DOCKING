@@ -68,48 +68,50 @@ def calculate_COM_atom_gpu(atom):
     atom_coords = torch.tensor([float(atom_data[7]), float(atom_data[8]), float(atom_data[9])], device='cuda')
     return atom_coords
 
-def clustering_molecule_gpu(mol_atoms, threshold=10.0):
+def clustering_molecule_gpu(mol_atoms):
     """
-    Cluster molecules using GPU acceleration with PyTorch.
+    Fully parallelized clustering on the GPU.
     """
-    # Convert all atom data to a PyTorch tensor on the GPU
-    mol_coords = torch.stack([calculate_COM_atom_gpu(atom) for atom in tqdm(mol_atoms)]).to('cuda')  # Shape: (num_atoms, 3)
+    # Convert molecule coordinates to a tensor on the GPU
+    mol_coords = [calculate_COM_atom_gpu(atom) for atom in mol_atoms]
+    mol_coords = torch.stack(mol_coords).to('cuda')  # Shape: (num_atoms, 3)
 
-    # Initialize cluster assignment and centers of mass (COM)
-    clusters = torch.empty((0, mol_coords.size(1)), device='cuda')  # Shape: (num_clusters, 3)
-    cluster_assignments = torch.full((mol_coords.size(0),), -1, dtype=torch.long, device='cuda')  # -1 means unassigned
+    # Initialize cluster centers
+    cluster_centers = mol_coords[:1]  # Start with the first atom as the first cluster center
+    cluster_assignments = torch.zeros(len(mol_coords), dtype=torch.long, device='cuda')  # Cluster indices for each atom
 
-    # Iterate over atoms
-    for i, atom_coords in enumerate(mol_coords):
-        if clusters.size(0) > 0:  # If clusters exist
-            # Calculate distances between the atom and all cluster COMs
-            distances = torch.sqrt(((clusters - atom_coords) ** 2).sum(dim=1))  # Shape: (num_clusters,)
+    while True:
+        # Compute distances between all atoms and all cluster centers
+        distances = torch.cdist(mol_coords, cluster_centers)  # Shape: (num_atoms, num_clusters)
 
-            # Check if the atom belongs to any cluster
-            min_distance, cluster_idx = torch.min(distances, dim=0)
-            if min_distance < threshold:
-                # Assign the atom to the nearest cluster
-                cluster_assignments[i] = cluster_idx
+        # Assign each atom to the nearest cluster
+        min_distances, assignments = distances.min(dim=1)  # Shape: (num_atoms,)
+        cluster_assignments = assignments.clone()
 
-                # Update the cluster center of mass
-                cluster_members = mol_coords[cluster_assignments == cluster_idx]  # All members of the cluster
-                clusters[cluster_idx] = cluster_members.mean(dim=0)  # Recalculate COM
-            else:
-                # Create a new cluster
-                clusters = torch.cat((clusters, atom_coords.unsqueeze(0)), dim=0)
-                cluster_assignments[i] = clusters.size(0) - 1
+        # Check if any atom is outside the threshold (e.g., distance > 10)
+        new_clusters_mask = min_distances > 10
+        if new_clusters_mask.any():
+            # Create new clusters for atoms outside the threshold
+            new_cluster_coords = mol_coords[new_clusters_mask]
+            cluster_centers = torch.cat([cluster_centers, new_cluster_coords], dim=0)  # Add new cluster centers
         else:
-            # Create the first cluster
-            clusters = atom_coords.unsqueeze(0)  # Initialize the first cluster
-            cluster_assignments[i] = 0
+            break  # All atoms are within a valid cluster
 
-    # Group atoms into their respective clusters
-    final_clusters = []
-    for cluster_idx in range(clusters.size(0)):
-        cluster_members = mol_coords[cluster_assignments == cluster_idx]
-        final_clusters.append(cluster_members)
+        # Update cluster centers as the mean of assigned atoms
+        new_cluster_centers = []
+        for cluster_idx in range(len(cluster_centers)):
+            cluster_atoms = mol_coords[cluster_assignments == cluster_idx]
+            if len(cluster_atoms) > 0:
+                new_cluster_centers.append(cluster_atoms.mean(dim=0))
+            else:
+                new_cluster_centers.append(cluster_centers[cluster_idx])  # Retain original if no atoms assigned
 
-    return final_clusters, clusters
+        cluster_centers = torch.stack(new_cluster_centers)
+
+    # Group atoms by cluster for the final result
+    clusters_final = [mol_coords[cluster_assignments == i] for i in range(len(cluster_centers))]
+
+    return clusters_final, cluster_centers
 
 def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
     # We show the graph of the clusters
