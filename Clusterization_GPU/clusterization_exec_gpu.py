@@ -68,11 +68,6 @@ def calculate_COM_atom_gpu(atom):
     atom_coords = torch.tensor([float(atom_data[7]), float(atom_data[8]), float(atom_data[9])], device='cuda')
     return atom_coords
 
-def calculate_COM_cluster_gpu(cluster):
-    """Calculate the center of mass of a cluster using PyTorch."""
-    cluster_coords = torch.stack(cluster)
-    return cluster_coords.mean(dim=0)
-
 def clustering_molecule_gpu(mol_atoms, threshold=10.0):
     """
     Cluster molecules using GPU acceleration with PyTorch.
