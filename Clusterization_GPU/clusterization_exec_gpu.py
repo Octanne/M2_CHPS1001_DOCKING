@@ -126,6 +126,8 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
     #plt.show(block=True)
     # Save the graph in a file in results folder
     fig.savefig(f"results/{ligand}_{molecule}_clusters.png")
+    # We close the graph
+    plt.close('all')
 
 def show_tables_clusters(molecule, clusters, clusters_com, total_atoms):
     # We show the tables of the clusters
