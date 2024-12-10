@@ -80,7 +80,7 @@ def clustering_molecule_gpu(mol_atoms, threshold=10.0):
     cluster_assignments = torch.full((mol_coords.size(0),), -1, dtype=torch.long, device='cuda')  # -1 means unassigned
 
     # Iterate over atoms
-    for i, atom_coords in enumerate(tqdm(mol_coords)):
+    for i, atom_coords in enumerate(mol_coords):
         if clusters.size(0) > 0:  # If clusters exist
             # Calculate distances between the atom and all cluster COMs
             distances = torch.sqrt(((clusters - atom_coords) ** 2).sum(dim=1))  # Shape: (num_clusters,)
