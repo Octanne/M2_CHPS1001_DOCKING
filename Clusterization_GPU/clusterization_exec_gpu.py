@@ -57,6 +57,8 @@ def clustering_molecule_gpu(mol_atoms):
     coords = torch.stack([atom_to_tensor(atom) for atom in mol_atoms]).cpu().numpy()
     db = DBSCAN(eps=10, min_samples=3).fit(coords)
     
+    print(f"Clustering of {len(coords)} atoms in {len(set(db.labels_))} clusters")
+    
     clusters = []
     for cluster_id in set(db.labels_):
         if cluster_id != -1:  # Ignorer les bruits
@@ -187,9 +189,11 @@ if __name__ == "__main__":
         check_time("start-"+ligand)
         directory_ligand = f"data/Results_{ligand}"
         parsed_data = parse_files(directory_ligand)
+        print("====================================")
+        print(f"Processing ligand {ligand}...")
 
         tasks = [(molecule, parsed_data, directory_ligand) for molecule in parsed_data]
-
+        
         with Pool(processes=max(1, mp.cpu_count() // 4)) as pool:
             results = pool.map(process_molecule, tasks)
 
@@ -197,4 +201,6 @@ if __name__ == "__main__":
             show_tables_clusters(molecule, clusters, centers, total_atoms)
             show_graphs_clusters(molecule, clusters, centers, total_atoms)
         check_time("end-"+ligand)
+        print(f"End of processing ligand {ligand}!")
+        print("====================================")
         save_time()
