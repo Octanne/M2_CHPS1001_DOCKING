@@ -98,6 +98,11 @@ def update_cluster_coms(atom_coms, clusters, cluster_sizes, cluster_coms):
             cluster_coms[cluster_idx, 1] = sum_y / cluster_size
             cluster_coms[cluster_idx, 2] = sum_z / cluster_size
 
+def convert_atom_to_com(atom_coms):
+    """
+    Convert atom objects to center of mass (COM) coordinates.
+    """
+    atom_coms = np.array([list(map(float, atom.split()[7:10])) for atom in atom_coms])
 
 def clustering_molecule_gpu(atom_coms, threshold=10, point_spacing=POINT_SPACING, max_clusters=1000):
     """
@@ -109,7 +114,7 @@ def clustering_molecule_gpu(atom_coms, threshold=10, point_spacing=POINT_SPACING
     cluster_sizes = np.zeros(max_clusters, dtype=np.int32)  # Number of atoms per cluster
     
     # Convert atom_coms to device array
-    atom_coms = np.array(atom_coms, dtype=np.float32)
+    atom_coms = convert_atom_to_com(atom_coms)
     
     d_atom_coms = cuda.to_device(atom_coms)
     d_cluster_coms = cuda.to_device(cluster_coms)
