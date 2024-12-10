@@ -1,0 +1,7 @@
+Molecule : 1BQQ
+Nb of atoms : 8550
+Nb of clusters : 2
+Total percentage : 100.0000%
+| Cluster ID | Nb of atoms | Center of mass | Percentage |
+| Cluster 0000 | 8549 | (+0005.66 +0001.79 +0009.99) | 099.9883% |
+| Cluster 0001 | 0001 | (+0003.91 -0002.76 -0000.30) | 000.0117% |

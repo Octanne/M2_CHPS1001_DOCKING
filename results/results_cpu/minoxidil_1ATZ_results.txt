@@ -1,0 +1,8 @@
+Molecule : 1ATZ
+Nb of atoms : 9481
+Nb of clusters : 3
+Total percentage : 100.0000%
+| Cluster ID | Nb of atoms | Center of mass | Percentage |
+| Cluster 0000 | 8812 | (+0014.37 +0015.30 +0019.54) | 092.9438% |
+| Cluster 0001 | 0648 | (+0017.38 +0014.95 +0011.64) | 006.8347% |
+| Cluster 0002 | 0021 | (+0007.36 +0011.29 +0015.48) | 000.2215% |

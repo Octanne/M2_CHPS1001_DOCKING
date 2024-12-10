@@ -58,19 +58,14 @@ def calculate_com_atom(atom):
     atom_x = atom_data[7]
     atom_y = atom_data[8]
     atom_z = atom_data[9]
-    #print(f"Atom : {atom_x} {atom_y} {atom_z}")
-    return [float(atom_x), float(atom_y), float(atom_z)]
+    return [float(atom_x)*POINT_SPACING, float(atom_y)*POINT_SPACING, float(atom_z)*POINT_SPACING]
 
-def calculate_com_cluster(cluster):
+def calculate_com_cluster(cluster, cluster_com, atom_com):
+    # We add atom_com to the mean of the cluster
     com = [0, 0, 0]
-    for atom in cluster:
-        atom_com = calculate_com_atom(atom)
-        com[0] += atom_com[0]
-        com[1] += atom_com[1]
-        com[2] += atom_com[2]
-    com[0] /= len(cluster)
-    com[1] /= len(cluster)
-    com[2] /= len(cluster)
+    com[0] = (cluster_com[0] * len(cluster) + atom_com[0]) / (len(cluster) + 1)
+    com[1] = (cluster_com[1] * len(cluster) + atom_com[1]) / (len(cluster) + 1)
+    com[2] = (cluster_com[2] * len(cluster) + atom_com[2]) / (len(cluster) + 1)
     return com
     
 def clustering_molecule(mol_atoms):
@@ -90,10 +85,10 @@ def clustering_molecule(mol_atoms):
             # We calculate the distance between the atom and the cluster center of mass
             distance = ((atom_com[0] - cluster_com[0])**2 + (atom_com[1] - cluster_com[1])**2 + (atom_com[2] - cluster_com[2])**2)**0.5
             
-            if distance*POINT_SPACING < 10:
+            if distance < 10:
                 clusters[i_cluster].append(atom_com)
                 # We update the cluster center of mass
-                clusters_com[i_cluster] = calculate_com_cluster(clusters[i_cluster])
+                clusters_com[i_cluster] = calculate_com_cluster(clusters[i_cluster], clusters_com[i_cluster], atom_com)
                 find_cluster = True
                 break
             i_cluster += 1
@@ -143,10 +138,9 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
         if len(cluster) < 3:
             continue
         for atom in cluster:
-            atom_data = atom.split()
-            x.append(float(atom_data[7]))
-            y.append(float(atom_data[8]))
-            z.append(float(atom_data[9]))         
+            x.append(atom[0])
+            y.append(atom[1])
+            z.append(atom[2])       
         z_threshold = 2
         # Nettoyage des valeurs aberrantes
         x, y, z = np.array(x), np.array(y), np.array(z)
