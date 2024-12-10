@@ -45,7 +45,7 @@ def print_molecule(directory):
             print(f"{file}")
         molecule_nb += 1
 
-def filter_molecule(molecule, mol_files):
+def filter_molecule(molecule, mol_files, directory_ligand):
     mol_atoms = list() # We store the atoms of the molecule that or interesting
     # We read each file for the molecule
     for file in mol_files:
@@ -272,9 +272,9 @@ def show_tables_clusters(molecule, clusters, clusters_com, total_atoms):
             i += 1
 
 def process_molecule(args):
-    molecule, parsed_data = args
+    molecule, parsed_data, directory_ligand = args
     mol_files = parsed_data[molecule]
-    mol_atoms = filter_molecule(molecule, mol_files)
+    mol_atoms = filter_molecule(molecule, mol_files, directory_ligand)
     # We do now from the mol_atoms list the clustering
     mol_clustering = clustering_molecule_gpu(mol_atoms)
     mol_clustering = (molecule, mol_atoms, *mol_clustering)
@@ -326,11 +326,11 @@ if __name__ == "__main__":
         parsed_data = parse_files(directory_ligand)
         
         # Prepare the data for the multiprocessing
-        tasks = [ (molecule, parsed_data) for molecule in parsed_data ]
+        tasks = [ (molecule, parsed_data, directory_ligand) for molecule in parsed_data ]
 
         # Use multiprocessing pool to process each molecule
         with Pool(processes=mp.cpu_count()) as pool:  # Adjust number of processes as needed
-            results_async = pool.imap(process_molecule, tasks)
+            results_async = pool.map(process_molecule, tasks)
             
         # Print the results
         results = list()
