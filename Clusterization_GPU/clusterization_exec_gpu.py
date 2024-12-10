@@ -1,20 +1,18 @@
-
-# This script is the GPU version of the clusterization algorithm.
-# Lib dependencies: cupy, matplotlib, numpy
-
 import os
 import re
-import cupy as cp
+
+from tqdm import tqdm
 import matplotlib.pyplot as plt
 from matplotlib.cm import get_cmap
 from matplotlib.colors import Normalize
 import numpy as np
 
 from multiprocessing import Pool
+import multiprocessing as mp
 import time
 
-POINT_SPACING = 0.375  # Point spacing in Angstroms
-RESULT_FOLDER = "results/results_gpu"
+POINT_SPACING=0.375 # Point spacing in Angstroms
+RESULT_FOLDER="results/results_cpu"
 
 def parse_files(directory):
     result = dict()
@@ -30,49 +28,80 @@ def parse_files(directory):
             result[molecule_name].append(filename)
     return result
 
-def filter_molecule(molecule, mol_files, directory_ligand):
-    mol_atoms = list()  # We store the atoms of the molecule that are interesting
+def print_molecule(directory):
+    parsed_data = parse_files(directory)
+    molecule_nb = 1
+    for data in parsed_data:
+        print(f"Molecule {data} ({molecule_nb}) :")
+        for file in parsed_data[data]:
+            print(f"{file}")
+        molecule_nb += 1
+
+def filter_molecule(molecule, mol_files):
+    mol_atoms = list() # We store the atoms of the molecule that or interesting
     # We read each file for the molecule
     for file in mol_files:
         with open(f"{directory_ligand}/{file}", 'r') as f:
             lines = f.readlines()
+            energy = 1
             for line in lines:
-                if line.startswith("DOCKED: ATOM"):
+                #if line.startswith("DOCKED: MODEL"):
+                    #model_num = line.split()[2]
+                if line.startswith("DOCKED: USER    Estimated Free Energy of Binding"):
+                    energy = float(line.split()[8])
+                if energy < 0 and line.startswith("DOCKED: ATOM"):
                     mol_atoms.append(line)
     return mol_atoms
 
-def calculate_COM_atom(atom):
+def calculate_com_atom(atom):
     atom_data = atom.split()
-    atom_x = float(atom_data[7])
-    atom_y = float(atom_data[8])
-    atom_z = float(atom_data[9])
-    return cp.array([atom_x, atom_y, atom_z], dtype=cp.float32)
+    atom_x = atom_data[7]
+    atom_y = atom_data[8]
+    atom_z = atom_data[9]
+    #print(f"Atom : {atom_x} {atom_y} {atom_z}")
+    return [float(atom_x), float(atom_y), float(atom_z)]
 
-def calculate_COM_cluster(cluster):
-    cluster_com = cp.zeros(3, dtype=cp.float32)
+def calculate_com_cluster(cluster):
+    com = [0, 0, 0]
     for atom in cluster:
-        cluster_com += calculate_COM_atom(atom)
-    return cluster_com / len(cluster)
-
+        atom_com = calculate_com_atom(atom)
+        com[0] += atom_com[0]
+        com[1] += atom_com[1]
+        com[2] += atom_com[2]
+    com[0] /= len(cluster)
+    com[1] /= len(cluster)
+    com[2] /= len(cluster)
+    return com
+    
 def clustering_molecule(mol_atoms):
-    clusters = []
-    clusters_com = []
-    mol_atoms_com = cp.array([calculate_COM_atom(atom) for atom in mol_atoms])
-
-    # Distance matrix computation (GPU parallelized)
-    for i, atom_com in enumerate(mol_atoms_com):
-        distances = cp.linalg.norm(mol_atoms_com - atom_com, axis=1) * POINT_SPACING
-        cluster_idx = cp.argwhere(distances < 10).flatten()
-
-        if len(cluster_idx) == 0:  # New cluster
-            clusters.append([mol_atoms[i]])
-            clusters_com.append(mol_atoms_com[i])
-        else:  # Add atom to existing cluster
-            # Convert cluster_idx to a list of integers
-            cluster_idx = cluster_idx.tolist()
-            for idx in cluster_idx:
-                clusters[idx].append(mol_atoms[i])
-                clusters_com[idx] = calculate_COM_cluster(clusters[idx])
+    # We create a list of clusters
+    clusters = list()
+    # We create a list of center of mass for each cluster
+    clusters_com = list()
+    # We convert the list of atoms in a list of center of mass
+    atoms_com = [calculate_com_atom(atom) for atom in mol_atoms]
+    
+    # We iterate over all atoms
+    for atom_com in tqdm(atoms_com):
+        # We get the cluster center of mass
+        i_cluster = 0
+        find_cluster = False
+        for cluster_com in clusters_com:
+            # We calculate the distance between the atom and the cluster center of mass
+            distance = ((atom_com[0] - cluster_com[0])**2 + (atom_com[1] - cluster_com[1])**2 + (atom_com[2] - cluster_com[2])**2)**0.5
+            
+            if distance*POINT_SPACING < 10:
+                clusters[i_cluster].append(atom_com)
+                # We update the cluster center of mass
+                clusters_com[i_cluster] = calculate_com_cluster(clusters[i_cluster])
+                find_cluster = True
+                break
+            i_cluster += 1
+        # If the atom is not in a cluster, we create a new cluster
+        if not find_cluster:
+            clusters.append(list())
+            clusters_com.append(atom_com)
+            clusters[i_cluster].append(atom_com)
     
     return clusters, clusters_com
 
@@ -137,13 +166,6 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
     # We close the graph
     plt.close('all')
 
-def process_molecule(args):
-    molecule, parsed_data, directory_ligand = args
-    mol_files = parsed_data[molecule]
-    mol_atoms = filter_molecule(molecule, mol_files, directory_ligand)
-    clusters, clusters_com = clustering_molecule(mol_atoms)
-    return molecule, mol_atoms, clusters, clusters_com
-
 def show_tables_clusters(molecule, clusters, clusters_com, total_atoms):
     # We show the tables of the clusters
     i = 0
@@ -174,39 +196,49 @@ def show_tables_clusters(molecule, clusters, clusters_com, total_atoms):
             f.write(f" {percentage:08.4f}% |\n")
             i += 1
 
+def process_molecule(args):
+    molecule, parsed_data = args
+    mol_files = parsed_data[molecule]
+    mol_atoms = filter_molecule(molecule, mol_files)
+    # We do now from the mol_atoms list the clustering
+    mol_clustering = clustering_molecule(mol_atoms)
+    mol_clustering = (molecule, mol_atoms, *mol_clustering)
+    
+    return mol_clustering
+
 def print_cluster_info(mol_clustering):
     molecule, mol_atoms, clusters, clusters_com = mol_clustering    
     print(f"Molecule : {molecule}")
     print(f"Nb of atoms : {len(mol_atoms)}")
     print(f"Nb of clusters : {len(clusters)}")
+    # Show graphs and tables of statistics of clusters repartition
     show_tables_clusters(molecule, clusters, clusters_com, len(mol_atoms))
     show_graphs_clusters(molecule, clusters, clusters_com, len(mol_atoms))
 
-# Time tracking
+# We save the time in a file
 time_tabs = dict()
 start_time = 0
-
 def check_time(check_pt):
     global start_time
     if start_time == 0:
         start_time = time.time()
     else:
         end_time = time.time()
-        time_tabs[f"{len(time_tabs)}-{check_pt}"] = end_time - start_time
+        time_tabs[f"{len(time_tabs)}-"+check_pt] = end_time - start_time
         start_time = end_time
-
 def save_time():
-    with open(f"{RESULT_FOLDER}/time_gpu.txt", 'w') as f:
+    with open(f"{RESULT_FOLDER}/time_cpu.txt", 'w') as f:
         for time in time_tabs:
             f.write(f"{time} : {time_tabs[time]}\n")
 
 # We list all ligands
-folder_ligands = ["galactose", "lactose", "minoxidil", "nebivolol", "resveratrol"]
-
+folder_ligands = [ "galactose", "lactose", "minoxidil", "nebivolol", "resveratrol" ]
+#folder_ligands = [ "galactose" ]
+# We list all proteins / ligands file docking sort by ligands
+check_time("start")
 # We create the results folder
 if not os.path.exists(RESULT_FOLDER):
     os.makedirs(RESULT_FOLDER)
-
 for ligand in folder_ligands:
     directory_ligand = f'data/Results_{ligand}'
     check_time(f"start-{ligand}")
@@ -214,21 +246,24 @@ for ligand in folder_ligands:
     print(f"Ligand : {ligand}")
     
     parsed_data = parse_files(directory_ligand)
-    tasks = [(molecule, parsed_data, directory_ligand) for molecule in parsed_data]
-
-    # Use multiprocessing pool to process each molecule on the GPU
-    with Pool(processes=1) as pool:  # Adjust processes if needed
-        results_async = pool.map(process_molecule, tasks)
     
+    # Prepare the data for the multiprocessing
+    tasks = [ (molecule, parsed_data) for molecule in parsed_data ]
+
+    # Use multiprocessing pool to process each molecule
+    with Pool(processes=1) as pool:  # Adjust number of processes as needed
+        results_async = pool.map(process_molecule, tasks)
+        
     # Print the results
-    results = []
+    results = list()
     for mol_clustering in results_async:
         print(f"Processing molecule {mol_clustering[0]} done !")
         results.append(mol_clustering)
-    
     for result in results:
         print_cluster_info(result)
-    
     print("===================================")
     check_time(f"end-{ligand}")
     save_time()
+
+## Filtration d'abord conserver juste les fichiers avec le meilleur score (négatif car viable)
+## Faire parcours des fichiers 

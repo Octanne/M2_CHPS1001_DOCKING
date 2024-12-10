@@ -43,29 +43,27 @@ def filter_molecule(molecule, mol_files):
     for file in mol_files:
         with open(f"{directory_ligand}/{file}", 'r') as f:
             lines = f.readlines()
-            modelNum = 0
             energy = 1
             for line in lines:
-                if line.startswith("DOCKED: MODEL"):
-                    modelNum = line.split()[2]
+                #if line.startswith("DOCKED: MODEL"):
+                    #model_num = line.split()[2]
                 if line.startswith("DOCKED: USER    Estimated Free Energy of Binding"):
                     energy = float(line.split()[8])
                 if energy < 0 and line.startswith("DOCKED: ATOM"):
                     mol_atoms.append(line)
     return mol_atoms
 
-def calculate_COM_atom(atom):
+def calculate_com_atom(atom):
     atom_data = atom.split()
     atom_x = atom_data[7]
     atom_y = atom_data[8]
     atom_z = atom_data[9]
-    #print(f"Atom : {atom_x} {atom_y} {atom_z}")
-    return [float(atom_x), float(atom_y), float(atom_z)]
+    return [float(atom_x)*POINT_SPACING, float(atom_y)*POINT_SPACING, float(atom_z)*POINT_SPACING]
 
-def calculate_COM_cluster(cluster):
+def calculate_com_cluster(cluster):
     com = [0, 0, 0]
     for atom in cluster:
-        atom_com = calculate_COM_atom(atom)
+        atom_com = calculate_com_atom(atom)
         com[0] += atom_com[0]
         com[1] += atom_com[1]
         com[2] += atom_com[2]
@@ -79,32 +77,30 @@ def clustering_molecule(mol_atoms):
     clusters = list()
     # We create a list of center of mass for each cluster
     clusters_com = list()
+    # We convert the list of atoms in a list of center of mass
+    atoms_com = [calculate_com_atom(atom) for atom in mol_atoms]
     
-    i = 0
-    for atom in tqdm(mol_atoms):
-        # We get the atom center of mass
-        atom_com = calculate_COM_atom(atom)
+    # We iterate over all atoms
+    for atom_com in tqdm(atoms_com):
         # We get the cluster center of mass
-        iCluster = 0
+        i_cluster = 0
         find_cluster = False
         for cluster_com in clusters_com:
             # We calculate the distance between the atom and the cluster center of mass
             distance = ((atom_com[0] - cluster_com[0])**2 + (atom_com[1] - cluster_com[1])**2 + (atom_com[2] - cluster_com[2])**2)**0.5
             
-            if distance*POINT_SPACING < 10:
-                clusters[iCluster].append(atom)
+            if distance < 10:
+                clusters[i_cluster].append(atom_com)
                 # We update the cluster center of mass
-                clusters_com[iCluster] = calculate_COM_cluster(clusters[iCluster])
+                clusters_com[i_cluster] = calculate_com_cluster(clusters[i_cluster])
                 find_cluster = True
                 break
-            iCluster += 1
+            i_cluster += 1
         # If the atom is not in a cluster, we create a new cluster
         if not find_cluster:
             clusters.append(list())
             clusters_com.append(atom_com)
-            clusters[iCluster].append(atom)
-            #print(f"New cluster {iCluster} started with atom {i} and center of mass {atom_com}")
-        i += 1
+            clusters[i_cluster].append(atom_com)
     
     return clusters, clusters_com
 
@@ -146,10 +142,9 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
         if len(cluster) < 3:
             continue
         for atom in cluster:
-            atom_data = atom.split()
-            x.append(float(atom_data[7]))
-            y.append(float(atom_data[8]))
-            z.append(float(atom_data[9]))         
+            x.append(atom[0])
+            y.append(atom[1])
+            z.append(atom[2])       
         z_threshold = 2
         # Nettoyage des valeurs aberrantes
         x, y, z = np.array(x), np.array(y), np.array(z)
