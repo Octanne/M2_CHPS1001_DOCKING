@@ -66,6 +66,8 @@ def calculate_COM_atom_gpu(atom):
 def calculate_COM_cluster_gpu(cluster):
     """Calculate the center of mass of a cluster using PyTorch."""
     cluster_coords = torch.stack(cluster)
+    # Increase precision to avoid overflow in large molecules
+    cluster_coords = cluster_coords.double()
     return cluster_coords.mean(dim=0)
 
 def clustering_molecule_gpu(mol_atoms):
@@ -89,6 +91,7 @@ def clustering_molecule_gpu(mol_atoms):
             cluster_coms_tensor = torch.stack(clusters_com)  # Shape: (num_clusters, 3)
 
             # Calculate distances to all clusters
+            # Euclidean distance between atom and each cluster COM
             distances = torch.sqrt(((cluster_coms_tensor - atom_coords) ** 2).sum(dim=1))  # Shape: (num_clusters,)
 
             # Check if atom belongs to any cluster (distance threshold = 10)
