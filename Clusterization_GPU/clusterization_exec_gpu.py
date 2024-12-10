@@ -54,7 +54,7 @@ def assign_atoms_to_clusters(atom_coms, cluster_coms, cluster_sizes, clusters, p
     CUDA kernel to assign atoms to clusters based on distances.
     """
     atom_idx = cuda.grid(1)  # Each thread handles one atom
-    nb_atoms = len(atom_coms)
+    nb_atoms = atom_coms.shape[0]
     if atom_idx < nb_atoms:
         min_distance = float('inf')
         cluster_idx = -1
