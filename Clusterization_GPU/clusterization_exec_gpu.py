@@ -2,185 +2,70 @@ import os
 import re
 from tqdm import tqdm
 
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-import matplotlib.pyplot as plt
-from matplotlib.cm import get_cmap
-from matplotlib.colors import Normalize
 import numpy as np
-
+import torch
+from sklearn.cluster import DBSCAN
 from multiprocessing import Pool
 import multiprocessing as mp
-import torch
+from matplotlib.cm import get_cmap
+from matplotlib.colors import Normalize
+import matplotlib.pyplot as plt
 import time
 
-# We put multiprocessing in spawn mode
+# Définir le mode de démarrage multiprocessing
 def set_spawn_method():
     try:
         mp.set_start_method('spawn', force=True)
-    except RuntimeError as e:
-        # Ignore if the context is already set
+    except RuntimeError:
         pass
 
+# Parsing des fichiers
 def parse_files(directory):
-    result = dict()
     pattern = re.compile(r'(\d+)_(\d+)_(\d+)_(\w+)\.dlg')
-
-    # We iterate over all files in the directory
+    result = {}
     for filename in os.listdir(directory):
         match = pattern.match(filename)
         if match:
             _, _, _, molecule_name = match.groups()
-            if result.get(molecule_name) == None:
-                result[molecule_name] = list()
-            result[molecule_name].append(filename)
+            result.setdefault(molecule_name, []).append(filename)
     return result
 
-def print_molecule(directory):
-    parsed_data = parse_files(directory)
-    molecule_nb = 1
-    for data in parsed_data:
-        print(f"Molecule {data} ({molecule_nb}) :")
-        for file in parsed_data[data]:
-            print(f"{file}")
-        molecule_nb += 1
-
-def filter_molecule(molecule, mol_files, directory_ligand):
-    mol_atoms = list() # We store the atoms of the molecule that or interesting
-    # We read each file for the molecule
+# Filtrage des molécules par score énergétique
+def filter_molecule(mol_files, directory_ligand):
+    filtered_atoms = []
     for file in mol_files:
         with open(f"{directory_ligand}/{file}", 'r') as f:
             lines = f.readlines()
-            modelNum = 0
-            energy = 1
+            energy = float('inf')
             for line in lines:
-                if line.startswith("DOCKED: MODEL"):
-                    modelNum = line.split()[2]
                 if line.startswith("DOCKED: USER    Estimated Free Energy of Binding"):
                     energy = float(line.split()[8])
                 if energy < 0 and line.startswith("DOCKED: ATOM"):
-                    mol_atoms.append(line)
-    return mol_atoms
+                    filtered_atoms.append(line)
+    return filtered_atoms
 
-def calculate_COM_atom_gpu(atom):
-    """Extract atom coordinates as a PyTorch tensor."""
-    atom_data = atom.split()
-    atom_coords = torch.tensor([float(atom_data[7]), float(atom_data[8]), float(atom_data[9])], device='cuda')
-    return atom_coords
+# Calcul GPU des coordonnées
+def atom_to_tensor(atom):
+    data = atom.split()
+    return torch.tensor([float(data[7]), float(data[8]), float(data[9])], device='cuda')
 
+# Clustering basé sur DBSCAN avec GPU
 def clustering_molecule_gpu(mol_atoms):
-    """
-    Fully parallelized clustering on the GPU.
-    """
-    # Convert molecule coordinates to a tensor on the GPU
-    mol_coords = [calculate_COM_atom_gpu(atom) for atom in mol_atoms]
-    mol_coords = torch.stack(mol_coords).to('cuda')  # Shape: (num_atoms, 3)
-
-    print(f"Computing clusters for {len(mol_coords)} atoms...")
-
-    # Initialize cluster centers
-    cluster_centers = mol_coords[:1]  # Start with the first atom as the first cluster center
-    cluster_assignments = torch.zeros(len(mol_coords), dtype=torch.long, device='cuda')  # Cluster indices for each atom
-
-    while True:
-        # Compute distances between all atoms and all cluster centers
-        distances = torch.cdist(mol_coords, cluster_centers)  # Shape: (num_atoms, num_clusters)
-
-        # Assign each atom to the nearest cluster
-        min_distances, assignments = distances.min(dim=1)  # Shape: (num_atoms,)
-        cluster_assignments = assignments.clone()
-
-        # Check if any atom is outside the threshold (e.g., distance > 10)
-        new_clusters_mask = min_distances > 10
-        if new_clusters_mask.any():
-            # Create new clusters for atoms outside the threshold
-            new_cluster_coords = mol_coords[new_clusters_mask]
-            cluster_centers = torch.cat([cluster_centers, new_cluster_coords], dim=0)  # Add new cluster centers
-        else:
-            break  # All atoms are within a valid cluster
-
-        # Update cluster centers as the mean of assigned atoms
-        new_cluster_centers = []
-        for cluster_idx in range(len(cluster_centers)):
-            cluster_atoms = mol_coords[cluster_assignments == cluster_idx]
-            if len(cluster_atoms) > 0:
-                new_cluster_centers.append(cluster_atoms.mean(dim=0))
-            else:
-                new_cluster_centers.append(cluster_centers[cluster_idx])  # Retain original if no atoms assigned
-
-        cluster_centers = torch.stack(new_cluster_centers)
-
-    # Group atoms by cluster for the final result
-    clusters_final = [mol_coords[cluster_assignments == i] for i in range(len(cluster_centers))]
-
-    return clusters_final, cluster_centers
-
-def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
-    # We show the graph of the clusters
-    """fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    for cluster in clusters:
-        x = list()
-        y = list()
-        z = list()
-        for atom in cluster:
-            atom_data = atom.split()
-            x.append(float(atom_data[7]))
-            y.append(float(atom_data[8]))
-            z.append(float(atom_data[9]))
-        ax.scatter(x, y, z)
-    # Show non bloquant
-    plt.show(block=False)"""
+    if not mol_atoms:
+        return [], []
     
-    # We show the graph by color depending of the percentage in each cluster (cloud of points)
-    """fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    i = 0
-    for cluster in clusters:
-        x = list()
-        y = list()
-        z = list()
-        for atom in cluster:
-            atom_data = atom.split()
-            x.append(float(atom_data[7]))
-            y.append(float(atom_data[8]))
-            z.append(float(atom_data[9]))
-        percentage = len(cluster) / total_atoms
-        # More the percentage is high, more the color is red
-        color = (1, 0, 0, percentage)
-        
-        ax.scatter(x, y, z, c=[color])
-    # Show non bloquant
-    plt.show(block=False)"""
+    coords = torch.stack([atom_to_tensor(atom) for atom in mol_atoms]).cpu().numpy()
+    db = DBSCAN(eps=10, min_samples=3).fit(coords)
     
-    # We show the graph by color depending of the percentage in each cluster (Surface of the cluster)
-    """fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    cmap = get_cmap('coolwarm')  # Palette de couleurs du bleu au rouge
-    # Calculer les pourcentages
-    percentages = [len(cluster) / total_atoms for cluster in clusters if len(cluster) >= 3]
-    # Normalisation dynamique basée sur les pourcentages
-    norm = Normalize(vmin=min(percentages), vmax=max(percentages))
-    for cluster in clusters:
-        x = []
-        y = []
-        z = []
-        # Filtrer les clusters avec moins de 3 atomes
-        if len(cluster) < 3:
-            continue
-        for atom in cluster:
-            atom_data = atom.split()
-            x.append(float(atom_data[7]))
-            y.append(float(atom_data[8]))
-            z.append(float(atom_data[9]))
-        percentage = len(cluster) / total_atoms  # Pourcentage du cluster actuel
-        color = cmap(norm(percentage))  # Obtenir la couleur normalisée    
-        ax.set_title(f"({molecule}) Cluster Surfaces (Color-coded by Percentage)") 
-        # Dessiner la surface triangulée avec la couleur normalisée
-        ax.plot_trisurf(x, y, z, color=color, alpha=0.8)
-    # Show non bloquant
-    plt.show(block=False)"""
+    clusters = []
+    for cluster_id in set(db.labels_):
+        if cluster_id != -1:  # Ignorer les bruits
+            clusters.append(coords[db.labels_ == cluster_id])
     
+    cluster_centers = [np.mean(cluster, axis=0) for cluster in clusters]
+    return clusters, cluster_centers
+
+def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):  
     # We show the graph by color depending of the percentage in each cluster (Only center of mass of the cluster)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
@@ -218,10 +103,10 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
         if len(cluster) < 3:
             continue
         for atom in cluster:
-            # We add all atoms in the x, y, z list
-            x.append(float(atom[0]))
-            y.append(float(atom[1]))
-            z.append(float(atom[2]))        
+            atom_data = atom.split()
+            x.append(float(atom_data[7]))
+            y.append(float(atom_data[8]))
+            z.append(float(atom_data[9]))         
         z_threshold = 2
         # Nettoyage des valeurs aberrantes
         x, y, z = np.array(x), np.array(y), np.array(z)
@@ -269,77 +154,47 @@ def show_tables_clusters(molecule, clusters, clusters_com, total_atoms):
             f.write(f" {percentage:08.4f}% |\n")
             i += 1
 
+# Traitement d'une molécule
 def process_molecule(args):
     molecule, parsed_data, directory_ligand = args
     mol_files = parsed_data[molecule]
-    mol_atoms = filter_molecule(molecule, mol_files, directory_ligand)
-    # We do now from the mol_atoms list the clustering
-    mol_clustering = clustering_molecule_gpu(mol_atoms)
-    mol_clustering = (molecule, mol_atoms, *mol_clustering)
-    
-    return mol_clustering
+    mol_atoms = filter_molecule(mol_files, directory_ligand)
+    clusters, centers = clustering_molecule_gpu(mol_atoms)
+    return molecule, clusters, centers, len(mol_atoms)
 
-def print_cluster_info(mol_clustering):
-    molecule, mol_atoms, clusters, clusters_com = mol_clustering
-    # We get back data to the CPU
-    clusters = [cluster.cpu().numpy() for cluster in clusters]
-    clusters_com = clusters_com.cpu().numpy()  
-    print(f"Molecule : {molecule}")
-    print(f"Nb of atoms : {len(mol_atoms)}")
-    print(f"Nb of clusters : {len(clusters)}")
-    # Show graphs and tables of statistics of clusters repartition
-    show_tables_clusters(molecule, clusters, clusters_com, len(mol_atoms))
-    show_graphs_clusters(molecule, clusters, clusters_com, len(mol_atoms))
+# We save the time in a file
+time_tabs = dict()
+start_time = 0
+def check_time(check_pt):
+    global start_time
+    if start_time == 0:
+        start_time = time.time()
+    else:
+        end_time = time.time()
+        time_tabs[f"{len(time_tabs)}-"+check_pt] = end_time - start_time
+        start_time = end_time
+def save_time():
+    with open("results/time_cpu.txt", 'w') as f:
+        for time in time_tabs:
+            f.write(f"{time} : {time_tabs[time]}\n")
 
+# Main
 if __name__ == "__main__":
     set_spawn_method()
+    folder_ligands = ["galactose", "lactose", "minoxidil", "nebivolol", "resveratrol"]
     
-    # We save the time in a file
-    time_tabs = dict()
-    start_time = 0
-    def check_time(check_pt):
-        global start_time
-        if start_time == 0:
-            start_time = time.time()
-        else:
-            end_time = time.time()
-            time_tabs[f"{len(time_tabs)}-"+check_pt] = end_time - start_time
-            start_time = end_time
-    def save_time():
-        with open("results/time_gpu.txt", 'w') as f:
-            for time in time_tabs:
-                f.write(f"{time} : {time_tabs[time]}\n")
-                
-    # We list all ligands
-    folder_ligands = [ "galactose", "lactose", "minoxidil", "nebivolol", "resveratrol" ]
-    #folder_ligands = [ "galactose" ]
-    # We list all proteins / ligands file docking sort by ligands
-    check_time("start")
-    for ligand in folder_ligands: # Possible to do in parallel
-        directory_ligand = f'data/Results_{ligand}'
-        check_time(f"start-{ligand}")
-        print("===================================")
-        print(f"Ligand : {ligand}")
-        
+    for ligand in folder_ligands:
+        check_time("start-"+ligand)
+        directory_ligand = f"data/Results_{ligand}"
         parsed_data = parse_files(directory_ligand)
-        
-        # Prepare the data for the multiprocessing
-        tasks = [ (molecule, parsed_data, directory_ligand) for molecule in parsed_data ]
 
-        # Use multiprocessing pool to process each molecule
-        with Pool(processes=int(mp.cpu_count()/2)) as pool:  # Adjust number of processes as needed
-            results_async = pool.map(process_molecule, tasks)
-            
-        # Print the results
-        results = list()
-        for mol_clustering in results_async:
-            print(f"Processing molecule {mol_clustering[0]} done !")
-            results.append(mol_clustering)
-        for result in results:
-            print_cluster_info(result)
-        print("===================================")
-        check_time(f"end-{ligand}")
+        tasks = [(molecule, parsed_data, directory_ligand) for molecule in parsed_data]
+
+        with Pool(processes=max(1, mp.cpu_count() // 4)) as pool:
+            results = pool.map(process_molecule, tasks)
+
+        for molecule, clusters, centers, total_atoms in results:
+            show_tables_clusters(molecule, clusters, centers, total_atoms)
+            show_graphs_clusters(molecule, clusters, centers, total_atoms)
+        check_time("end-"+ligand)
         save_time()
-
-## Filtration d'abord conserver juste les fichiers avec le meilleur score (négatif car viable)
-## Faire parcours des fichiers 
