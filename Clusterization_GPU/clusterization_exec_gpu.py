@@ -109,6 +109,7 @@ def clustering_molecule(mol_atoms):
     
     ANGSTROMS = 10.0
     
+    # TODO Potentially we can use a kernel to process the sections in parallel (to be done)
     for i in range(num_sections): 
         section = atoms_com_array[i*nb_atoms_per_section:(i+1)*nb_atoms_per_section] 
         num_atoms = section.shape[0]
