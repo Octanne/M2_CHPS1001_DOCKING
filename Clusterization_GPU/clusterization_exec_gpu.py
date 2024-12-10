@@ -62,9 +62,9 @@ def assign_atoms_to_clusters(atom_coms, cluster_coms, cluster_sizes, clusters, p
         # Find the closest cluster
         for j in range(nb_atoms):
             if cluster_sizes[j] > 0:  # Check if the cluster exists
-                dx = atom_coms[atom_idx][0] - cluster_coms[j, 0]
-                dy = atom_coms[atom_idx][1] - cluster_coms[j, 1]
-                dz = atom_coms[atom_idx][2] - cluster_coms[j, 2]
+                dx = atom_coms[atom_idx, 0] - cluster_coms[j, 0]
+                dy = atom_coms[atom_idx, 1] - cluster_coms[j, 1]
+                dz = atom_coms[atom_idx, 2] - cluster_coms[j, 2]
                 distance = (dx ** 2 + dy ** 2 + dz ** 2) ** 0.5
 
                 if distance < min_distance:
@@ -90,9 +90,9 @@ def update_cluster_coms(atom_coms, clusters, cluster_sizes, cluster_coms):
             sum_x, sum_y, sum_z = 0.0, 0.0, 0.0
             for atom_idx in range(atom_nb):
                 if clusters[cluster_idx, atom_idx] == 1:  # Atom belongs to this cluster
-                    sum_x += atom_coms[atom_idx][0]
-                    sum_y += atom_coms[atom_idx][1]
-                    sum_z += atom_coms[atom_idx][2]
+                    sum_x += atom_coms[atom_idx, 0]
+                    sum_y += atom_coms[atom_idx, 1]
+                    sum_z += atom_coms[atom_idx, 2]
 
             cluster_coms[cluster_idx, 0] = sum_x / cluster_size
             cluster_coms[cluster_idx, 1] = sum_y / cluster_size
@@ -107,6 +107,9 @@ def clustering_molecule_gpu(atom_coms, threshold=10, point_spacing=POINT_SPACING
     clusters = np.zeros((max_clusters, num_atoms), dtype=np.int32)  # Cluster membership matrix
     cluster_coms = np.zeros((max_clusters, 3), dtype=np.float32)  # Cluster COMs
     cluster_sizes = np.zeros(max_clusters, dtype=np.int32)  # Number of atoms per cluster
+    
+    # Convert atom_coms to device array
+    atom_coms = np.array(atom_coms, dtype=np.float32)
     
     d_atom_coms = cuda.to_device(atom_coms)
     d_cluster_coms = cuda.to_device(cluster_coms)
