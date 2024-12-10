@@ -317,7 +317,7 @@ if __name__ == "__main__":
     #folder_ligands = [ "galactose" ]
     # We list all proteins / ligands file docking sort by ligands
     check_time("start")
-    for ligand in folder_ligands:
+    for ligand in folder_ligands: # Possible to do in parallel
         directory_ligand = f'data/Results_{ligand}'
         check_time(f"start-{ligand}")
         print("===================================")

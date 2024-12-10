@@ -294,7 +294,7 @@ def check_time(check_pt):
 def save_time():
     with open("results/time_cpu.txt", 'w') as f:
         for time in time_tabs:
-            f.wirte(f"{time} : {time_tabs[time]}\n")
+            f.write(f"{time} : {time_tabs[time]}\n")
 
 # We list all ligands
 folder_ligands = [ "galactose", "lactose", "minoxidil", "nebivolol", "resveratrol" ]
