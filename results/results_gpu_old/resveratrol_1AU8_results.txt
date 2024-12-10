@@ -1,0 +1,8 @@
+Molecule : 1AU8
+Nb of atoms : 17540
+Nb of clusters : 3
+Total percentage : 10.2623%
+| Cluster ID | Nb of atoms | Center of mass | Percentage |
+| Cluster 0000 | 1686 | (+0013.77 +0007.85 -0000.52) | 009.6123% |
+| Cluster 0001 | 0113 | (+0019.69 -0004.09 -0000.25) | 000.6442% |
+| Cluster 0002 | 0001 | (+0006.77 +0000.09 -0000.23) | 000.0057% |

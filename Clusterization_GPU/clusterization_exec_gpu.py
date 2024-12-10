@@ -103,12 +103,15 @@ def clustering_molecule(mol_atoms):
     atoms_com = [calculate_com_atom(atom) for atom in mol_atoms] 
     atoms_com.sort(key=lambda x: (x[2], x[1], x[0])) 
     
+    nb_atoms_per_section = 2500
     atoms_com_array = cp.array(atoms_com, dtype=cp.float32) 
-    num_sections = (len(atoms_com_array) + 999) // 1000 
+    num_sections = (len(atoms_com_array) + (nb_atoms_per_section-1)) // nb_atoms_per_section 
+    
+    ANGSTROMS = 10.0
     
     for i in range(num_sections): 
-        section = atoms_com_array[i*100:(i+1)*100] 
-        num_atoms = section.shape[0] 
+        section = atoms_com_array[i*nb_atoms_per_section:(i+1)*nb_atoms_per_section] 
+        num_atoms = section.shape[0]
         d_section = cp.array(section)
         
         # Extract x, y, z coordinates 
@@ -120,11 +123,11 @@ def clustering_molecule(mol_atoms):
         cluster_indices = cp.zeros(num_atoms, dtype=cp.int32)
         
         # Launch the kernel 
-        cluster_kernel(x, y, z, 10.0, num_atoms, cluster_indices)
+        cluster_kernel(x, y, z, ANGSTROMS, num_atoms, cluster_indices)
         
         # Process cluster indices to form clusters 
         for j in range(num_atoms):
-            idx = int(cluster_indices[j]+i*1000) # We add the offset of the section
+            idx = int(cluster_indices[j]+i*nb_atoms_per_section) # We add the offset of the section
             atom_com = section[j]
             if idx not in clusters:
                 clusters[idx] = [atom_com]
@@ -135,22 +138,30 @@ def clustering_molecule(mol_atoms):
                 
     final_clusters = []
     final_clusters_com = []
+    
+    nb_total_atoms = 0
+    for i in clusters.keys():
+        nb_total_atoms += len(clusters[i])
+    
+    assert nb_total_atoms == len(atoms_com) # Check if we have the same number of atoms
                 
     # We fusion the clusters that are at less than 10 Angstroms from each other by using a kernel
+    # TODO : We have to do this in the GPU with a kernel to be faster and more efficient (to be done)
+    NONE_CLUSTER = "[ None ]"
     for i in clusters_com.keys():
         for j in clusters_com.keys():
             if i != j:
-                if clusters[i] == "[ None ]" or clusters[j] == "[ None ]":
+                if clusters[i] == NONE_CLUSTER or clusters[j] == NONE_CLUSTER:
                     continue
                 dist = cp.linalg.norm(cp.array(clusters_com[i]) - cp.array(clusters_com[j]))
-                if dist < 10.0:
+                if dist < ANGSTROMS:
                     clusters[i] = clusters[i] + clusters[j]
                     clusters_com[i] = calculate_com_cluster_combine(clusters[i], clusters_com[i], clusters[j], clusters_com[j])
-                    clusters[j] = "[ None ]" # We put the cluster to a value that is not possible
-                    clusters_com[j] = "[ None ]" # We put the cluster_com to a value that is not possible
+                    clusters[j] = NONE_CLUSTER # We put the cluster to a value that is not possible
+                    clusters_com[j] = NONE_CLUSTER # We put the cluster_com to a value that is not possible
     # We convert the clusters and clusters_com to the final list
     for i in clusters_com.keys():
-        if clusters[i] != "[ None ]":
+        if clusters[i] != NONE_CLUSTER:
             final_clusters.append(clusters[i])
             final_clusters_com.append(clusters_com[i])
     

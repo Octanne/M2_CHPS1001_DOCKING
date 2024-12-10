@@ -1,0 +1,8 @@
+Molecule : 1XCD
+Nb of atoms : 20260
+Nb of clusters : 3
+Total percentage : 10.3653%
+| Cluster ID | Nb of atoms | Center of mass | Percentage |
+| Cluster 0000 | 1623 | (+0009.31 +0027.81 -0000.42) | 008.0109% |
+| Cluster 0001 | 0442 | (+0003.69 +0004.32 -0000.27) | 002.1816% |
+| Cluster 0002 | 0035 | (-0000.56 +0030.17 -0000.20) | 000.1728% |
