@@ -14,6 +14,9 @@ import multiprocessing as mp
 import torch
 import time
 
+# We put multiprocessing in spawn mode
+mp.set_start_method('spawn')
+
 def parse_files(directory):
     result = dict()
     pattern = re.compile(r'(\d+)_(\d+)_(\d+)_(\w+)\.dlg')

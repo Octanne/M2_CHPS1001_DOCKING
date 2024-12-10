@@ -325,8 +325,7 @@ for ligand in folder_ligands:
         print_cluster_info(result)
     print("===================================")
     check_time(f"end-{ligand}")
-    
-save_time()
+    save_time()
 
 ## Filtration d'abord conserver juste les fichiers avec le meilleur score (négatif car viable)
 ## Faire parcours des fichiers 
