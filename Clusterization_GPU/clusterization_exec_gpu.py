@@ -1,6 +1,8 @@
 import os
 import re
 
+# Installation des dépendances : numba, tqdm, matplotlib
+
 from multiprocessing import Pool
 import multiprocessing as mp
 import numpy as np
@@ -232,7 +234,7 @@ def check_time(check_pt):
         time_tabs[f"{len(time_tabs)}-"+check_pt] = end_time - start_time
         start_time = end_time
 def save_time():
-    with open(f"{RESULTS_DIR}/time_cpu.txt", 'w') as f:
+    with open(f"{RESULTS_DIR}/time_gpu.txt", 'w') as f:
         for time in time_tabs:
             f.write(f"{time} : {time_tabs[time]}\n")
 
