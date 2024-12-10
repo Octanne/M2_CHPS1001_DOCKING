@@ -1,0 +1,6 @@
+Molecule : 1IJB
+Nb of atoms : 15648
+Nb of clusters : 1
+Total percentage : 10.2249%
+| Cluster ID | Nb of atoms | Center of mass | Percentage |
+| Cluster 0000 | 1600 | (+0001.98 +0002.85 -0000.33) | 010.2249% |

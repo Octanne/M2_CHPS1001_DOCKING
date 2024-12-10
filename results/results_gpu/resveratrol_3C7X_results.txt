@@ -1,0 +1,6 @@
+Molecule : 3C7X
+Nb of atoms : 11120
+Nb of clusters : 1
+Total percentage : 10.7914%
+| Cluster ID | Nb of atoms | Center of mass | Percentage |
+| Cluster 0000 | 1200 | (+0001.98 +0006.09 -0000.49) | 010.7914% |

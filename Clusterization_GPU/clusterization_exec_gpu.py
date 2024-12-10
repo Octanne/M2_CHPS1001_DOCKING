@@ -69,6 +69,14 @@ def calculate_com_cluster(cluster, cluster_com, atom_com):
     com[2] = (cluster_com[2] * len(cluster) + atom_com[2]) / (len(cluster) + 1)
     return com
 
+def calculate_com_cluster_combine(cluster1, cluster_com1, cluster2, cluster_com2):
+    # We add atom_com to the mean of the cluster
+    com = [0, 0, 0]
+    com[0] = (cluster_com1[0] * len(cluster1) + cluster_com2[0] * len(cluster2)) / (len(cluster1) + len(cluster2))
+    com[1] = (cluster_com1[1] * len(cluster1) + cluster_com2[1] * len(cluster2)) / (len(cluster1) + len(cluster2))
+    com[2] = (cluster_com1[2] * len(cluster1) + cluster_com2[2] * len(cluster2)) / (len(cluster1) + len(cluster2))
+    return com
+
 # Kernel definition for clustering 
 cluster_kernel = cp.ElementwiseKernel( 
     'raw float32 x, raw float32 y, raw float32 z, float32 threshold, int32 num_atoms',
@@ -83,20 +91,20 @@ cluster_kernel = cp.ElementwiseKernel(
             if (dist < threshold) { 
                 cluster_index = j; 
                 return; 
-            } 
+            }
         } 
     } 
     cluster_index = idx; ''', 
     'cluster_kernel' ) 
 
 def clustering_molecule(mol_atoms): 
-    clusters = [] 
-    clusters_com = [] 
+    clusters = dict()
+    clusters_com = dict() 
     atoms_com = [calculate_com_atom(atom) for atom in mol_atoms] 
     atoms_com.sort(key=lambda x: (x[2], x[1], x[0])) 
     
     atoms_com_array = cp.array(atoms_com, dtype=cp.float32) 
-    num_sections = (len(atoms_com_array) + 99) // 100 
+    num_sections = (len(atoms_com_array) + 999) // 1000 
     
     for i in range(num_sections): 
         section = atoms_com_array[i*100:(i+1)*100] 
@@ -109,27 +117,43 @@ def clustering_molecule(mol_atoms):
         z = d_section[:, 2] 
         
         # Initialize cluster indices 
-        cluster_indices = cp.zeros(num_atoms, dtype=cp.int32) 
+        cluster_indices = cp.zeros(num_atoms, dtype=cp.int32)
         
         # Launch the kernel 
         cluster_kernel(x, y, z, 10.0, num_atoms, cluster_indices)
         
         # Process cluster indices to form clusters 
-        for j in range(num_atoms): 
-            idx = int(cluster_indices[j])
-            atom_com = section[j] 
-            if idx == j or idx >= len(clusters): 
-                clusters.append([atom_com]) 
-                clusters_com.append(atom_com) 
-            else: 
-                clusters[idx].append(atom_com) 
+        for j in range(num_atoms):
+            idx = int(cluster_indices[j]+i*1000) # We add the offset of the section
+            atom_com = section[j]
+            if idx not in clusters:
+                clusters[idx] = [atom_com]
+                clusters_com[idx] = atom_com
+            else:
+                clusters[idx].append(atom_com)
                 clusters_com[idx] = calculate_com_cluster(clusters[idx], clusters_com[idx], atom_com)
-        
-    final_clusters = cp.concatenate([cp.array(c) for c in clusters], axis=0) 
-    final_clusters_com = cp.mean(cp.array(clusters_com), axis=0)
-    print(len(final_clusters), len(atoms_com_array))
-    assert len(final_clusters) == len(atoms_com_array)
-        
+                
+    final_clusters = []
+    final_clusters_com = []
+                
+    # We fusion the clusters that are at less than 10 Angstroms from each other by using a kernel
+    for i in clusters_com.keys():
+        for j in clusters_com.keys():
+            if i != j:
+                if clusters[i] == "[ None ]" or clusters[j] == "[ None ]":
+                    continue
+                dist = cp.linalg.norm(cp.array(clusters_com[i]) - cp.array(clusters_com[j]))
+                if dist < 10.0:
+                    clusters[i] = clusters[i] + clusters[j]
+                    clusters_com[i] = calculate_com_cluster_combine(clusters[i], clusters_com[i], clusters[j], clusters_com[j])
+                    clusters[j] = "[ None ]" # We put the cluster to a value that is not possible
+                    clusters_com[j] = "[ None ]" # We put the cluster_com to a value that is not possible
+    # We convert the clusters and clusters_com to the final list
+    for i in clusters_com.keys():
+        if clusters[i] != "[ None ]":
+            final_clusters.append(clusters[i])
+            final_clusters_com.append(clusters_com[i])
+    
     return final_clusters, final_clusters_com
 
 oldcode="""    
@@ -160,15 +184,15 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
     # We show the graph by color depending of the percentage in each cluster (Only center of mass of the cluster)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    cmap = get_cmap('coolwarm')  # Palette de couleurs du bleu au rouge
+    cmap = plt.get_cmap('coolwarm')  # Palette de couleurs du bleu au rouge
     # Calculer les pourcentages
     percentages = [len(cluster) / total_atoms for cluster in clusters]
     # Normalisation dynamique basée sur les pourcentages
     norm = Normalize(vmin=min(percentages), vmax=max(percentages))
     for i, cluster_com in enumerate(clusters_com):
-        x = cluster_com[0]
-        y = cluster_com[1]
-        z = cluster_com[2]
+        x = float(cluster_com[0])
+        y = float(cluster_com[1])
+        z = float(cluster_com[2])
         percentage = percentages[i]  # Pourcentage du cluster actuel
         # Obtenir la couleur normalisée
         color = cmap(norm(percentage))  # Appliquer la colormap à la valeur normalisée
@@ -181,7 +205,7 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
     # We show the graph by color depending of the percentage in each cluster (Remove abnormal values)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    cmap = get_cmap('coolwarm')  # Palette de couleurs du bleu au rouge
+    cmap = plt.get_cmap('coolwarm')  # Palette de couleurs du bleu au rouge
     # Calculer les pourcentages
     percentages = [len(cluster) / total_atoms for cluster in clusters if len(cluster) >= 3]
     # Normalisation dynamique basée sur les pourcentages
@@ -194,9 +218,9 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
         if len(cluster) < 3:
             continue
         for atom in cluster:
-            x.append(atom[0])
-            y.append(atom[1])
-            z.append(atom[2])       
+            x.append(float(atom[0]))
+            y.append(float(atom[1]))
+            z.append(float(atom[2]))       
         z_threshold = 2
         # Nettoyage des valeurs aberrantes
         x, y, z = np.array(x), np.array(y), np.array(z)
@@ -297,9 +321,8 @@ for ligand in folder_ligands:
     # Prepare the data for the multiprocessing
     tasks = [ (molecule, parsed_data, directory_ligand, ligand) for molecule in parsed_data ]
 
-    # Use multiprocessing pool to process each molecule
-    with Pool(processes=1) as pool:  # Adjust number of processes as needed
-        results_async = pool.map(process_molecule, tasks)
+    # Iterate to each molecule and process the clustering
+    results_async = map(process_molecule, tasks)
         
     # Print the results
     results = list()
