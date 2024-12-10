@@ -117,7 +117,7 @@ def clustering_molecule_gpu(atom_coms, threshold=10, point_spacing=POINT_SPACING
         assign_atoms_to_clusters[blocks_per_grid, threads_per_block](
             atom_coms, cluster_coms, cluster_sizes, clusters, point_spacing, threshold
         )
-
+        print(f"Iteration {iteration + 1} - Nb of clusters : {np.sum(cluster_sizes > 0)}")
         # Update cluster COMs
         cluster_blocks = (max_clusters + threads_per_block - 1) // threads_per_block
         update_cluster_coms[cluster_blocks, threads_per_block](
