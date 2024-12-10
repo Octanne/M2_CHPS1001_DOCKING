@@ -60,16 +60,12 @@ def calculate_com_atom(atom):
     atom_z = atom_data[9]
     return [float(atom_x)*POINT_SPACING, float(atom_y)*POINT_SPACING, float(atom_z)*POINT_SPACING]
 
-def calculate_com_cluster(cluster):
+def calculate_com_cluster(cluster, cluster_com, atom_com):
+    # We add atom_com to the mean of the cluster
     com = [0, 0, 0]
-    for atom in cluster:
-        atom_com = calculate_com_atom(atom)
-        com[0] += atom_com[0]
-        com[1] += atom_com[1]
-        com[2] += atom_com[2]
-    com[0] /= len(cluster)
-    com[1] /= len(cluster)
-    com[2] /= len(cluster)
+    com[0] = (cluster_com[0] * len(cluster) + atom_com[0]) / (len(cluster) + 1)
+    com[1] = (cluster_com[1] * len(cluster) + atom_com[1]) / (len(cluster) + 1)
+    com[2] = (cluster_com[2] * len(cluster) + atom_com[2]) / (len(cluster) + 1)
     return com
     
 def clustering_molecule(mol_atoms):
@@ -92,7 +88,7 @@ def clustering_molecule(mol_atoms):
             if distance < 10:
                 clusters[i_cluster].append(atom_com)
                 # We update the cluster center of mass
-                clusters_com[i_cluster] = calculate_com_cluster(clusters[i_cluster])
+                clusters_com[i_cluster] = calculate_com_cluster(clusters[i_cluster], clusters_com[i_cluster], atom_com)
                 find_cluster = True
                 break
             i_cluster += 1
