@@ -49,7 +49,7 @@ def filter_molecule(mol_files, directory_ligand):
 # Calcul GPU des coordonnées
 def atom_to_tensor(atom):
     data = atom.split()
-    return torch.tensor([float(data[7]), float(data[8]), float(data[9])], device='cuda')
+    return torch.tensor([float(data[7]*POINT_SPACING), float(data[8]*POINT_SPACING), float(data[9]*POINT_SPACING)], device='cuda')
 
 # Clustering basé sur DBSCAN avec GPU
 def clustering_molecule_gpu(mol_atoms):
