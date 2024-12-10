@@ -62,9 +62,9 @@ def assign_atoms_to_clusters(atom_coms, cluster_coms, cluster_sizes, clusters, p
         # Find the closest cluster
         for j in range(nb_atoms):
             if cluster_sizes[j] > 0:  # Check if the cluster exists
-                dx = atom_coms[atom_idx, 0] - cluster_coms[j, 0]
-                dy = atom_coms[atom_idx, 1] - cluster_coms[j, 1]
-                dz = atom_coms[atom_idx, 2] - cluster_coms[j, 2]
+                dx = atom_coms[atom_idx][0] - cluster_coms[j, 0]
+                dy = atom_coms[atom_idx][1] - cluster_coms[j, 1]
+                dz = atom_coms[atom_idx][2] - cluster_coms[j, 2]
                 distance = (dx ** 2 + dy ** 2 + dz ** 2) ** 0.5
 
                 if distance < min_distance:
@@ -82,16 +82,17 @@ def update_cluster_coms(atom_coms, clusters, cluster_sizes, cluster_coms):
     """
     CUDA kernel to update cluster center of masses (COMs) based on assigned atoms.
     """
+    atom_nb = len(atom_coms)
     cluster_idx = cuda.grid(1)  # Each thread handles one cluster
     if cluster_idx < clusters.shape[0]:
         cluster_size = cluster_sizes[cluster_idx]
         if cluster_size > 0:
             sum_x, sum_y, sum_z = 0.0, 0.0, 0.0
-            for atom_idx in range(atom_coms.shape[0]):
+            for atom_idx in range(atom_nb):
                 if clusters[cluster_idx, atom_idx] == 1:  # Atom belongs to this cluster
-                    sum_x += atom_coms[atom_idx, 0]
-                    sum_y += atom_coms[atom_idx, 1]
-                    sum_z += atom_coms[atom_idx, 2]
+                    sum_x += atom_coms[atom_idx][0]
+                    sum_y += atom_coms[atom_idx][1]
+                    sum_z += atom_coms[atom_idx][2]
 
             cluster_coms[cluster_idx, 0] = sum_x / cluster_size
             cluster_coms[cluster_idx, 1] = sum_y / cluster_size
