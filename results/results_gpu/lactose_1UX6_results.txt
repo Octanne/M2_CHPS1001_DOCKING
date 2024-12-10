@@ -1,0 +1,8 @@
+Molecule : 1UX6
+Nb of atoms : 17732
+Nb of clusters : 3
+Total percentage : 100.0000%
+| Cluster ID | Nb of atoms | Center of mass | Percentage |
+| Cluster 0000 | 15328 | (-0003.06 +0011.74 +0007.37) | 086.4426% |
+| Cluster 0001 | 0154 | (-0013.36 +0009.69 +0005.49) | 000.8685% |
+| Cluster 0002 | 2250 | (-0012.71 +0012.16 +0016.69) | 012.6889% |
