@@ -209,10 +209,10 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
         if len(cluster) < 3:
             continue
         for atom in cluster:
-            atom_data = atom.split()
-            x.append(float(atom_data[7]))
-            y.append(float(atom_data[8]))
-            z.append(float(atom_data[9]))         
+            # We add all atoms in the x, y, z list
+            x.append(float(atom[0]))
+            y.append(float(atom[1]))
+            z.append(float(atom[2]))        
         z_threshold = 2
         # Nettoyage des valeurs aberrantes
         x, y, z = np.array(x), np.array(y), np.array(z)
