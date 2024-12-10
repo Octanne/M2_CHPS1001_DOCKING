@@ -1,9 +1,7 @@
 import os
 import re
-from tqdm import tqdm
 
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+from tqdm import tqdm
 import matplotlib.pyplot as plt
 from matplotlib.cm import get_cmap
 from matplotlib.colors import Normalize
@@ -14,6 +12,7 @@ import multiprocessing as mp
 import time
 
 POINT_SPACING=0.375 # Point spacing in Angstroms
+RESULT_FOLDER="results/results_cpu"
 
 def parse_files(directory):
     result = dict()
@@ -129,7 +128,7 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
     ax.set_title(f"({molecule}) Clusters Center of Mass (Color-coded by Percentage)")
     #plt.show(block=False)
     # Save the graph in a file in results folder
-    fig.savefig(f"results/{ligand}_{molecule}_clusters_com.png")
+    fig.savefig(f"{RESULT_FOLDER}/{ligand}_{molecule}_clusters_com.png")
     
     # We show the graph by color depending of the percentage in each cluster (Remove abnormal values)
     fig = plt.figure()
@@ -166,7 +165,7 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
     ax.set_title(f"({molecule}) Cluster Surfaces (Cleaned and Color-coded by Percentage)")
     #plt.show(block=True)
     # Save the graph in a file in results folder
-    fig.savefig(f"results/{ligand}_{molecule}_clusters.png")
+    fig.savefig(f"{RESULT_FOLDER}/{ligand}_{molecule}_clusters.png")
     # We close the graph
     plt.close('all')
 
@@ -184,7 +183,7 @@ def show_tables_clusters(molecule, clusters, clusters_com, total_atoms):
         print(f"Percentage : {percentage:08.4f}%")
         i += 1
     # Save the data in a file in results folder
-    with open(f"results/{ligand}_{molecule}_results.txt", 'w') as f:
+    with open(f"{RESULT_FOLDER}/{ligand}_{molecule}_results.txt", 'w') as f:
         f.write(f"Molecule : {molecule}\n")
         f.write(f"Nb of atoms : {total_atoms}\n")
         f.write(f"Nb of clusters : {len(clusters)}\n")
@@ -231,7 +230,7 @@ def check_time(check_pt):
         time_tabs[f"{len(time_tabs)}-"+check_pt] = end_time - start_time
         start_time = end_time
 def save_time():
-    with open("results/time_cpu.txt", 'w') as f:
+    with open(f"{RESULT_FOLDER}/time_cpu.txt", 'w') as f:
         for time in time_tabs:
             f.write(f"{time} : {time_tabs[time]}\n")
 
@@ -240,6 +239,9 @@ folder_ligands = [ "galactose", "lactose", "minoxidil", "nebivolol", "resveratro
 #folder_ligands = [ "galactose" ]
 # We list all proteins / ligands file docking sort by ligands
 check_time("start")
+# We create the results folder
+if not os.path.exists(RESULT_FOLDER):
+    os.makedirs(RESULT_FOLDER)
 for ligand in folder_ligands:
     directory_ligand = f'data/Results_{ligand}'
     check_time(f"start-{ligand}")

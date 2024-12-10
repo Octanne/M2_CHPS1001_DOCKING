@@ -1,18 +1,18 @@
 import os
 import re
-from tqdm import tqdm
 
-import numpy as np
-import torch
-from sklearn.cluster import DBSCAN
 from multiprocessing import Pool
 import multiprocessing as mp
+import numpy as np
+from numba import cuda, jit
+from tqdm import tqdm
 from matplotlib.cm import get_cmap
 from matplotlib.colors import Normalize
 import matplotlib.pyplot as plt
 import time
 
 POINT_SPACING=1 # Point spacing in Angstroms
+RESULTS_DIR = "results/results_gpu"  # Results directory
 
 # Définir le mode de démarrage multiprocessing
 def set_spawn_method():
@@ -46,28 +46,81 @@ def filter_molecule(mol_files, directory_ligand):
                     filtered_atoms.append(line)
     return filtered_atoms
 
-# Calcul GPU des coordonnées
-def atom_to_tensor(atom):
-    data = atom.split()
-    return torch.tensor([float(data[7])*POINT_SPACING, float(data[8])*POINT_SPACING, float(data[9])*POINT_SPACING], device='cuda')
+@cuda.jit
+def assign_atoms_to_clusters(atom_coms, cluster_coms, cluster_sizes, clusters, point_spacing, threshold):
+    """
+    CUDA kernel to assign atoms to clusters based on distances.
+    """
+    atom_idx = cuda.grid(1)  # Each thread handles one atom
+    if atom_idx < atom_coms.shape[0]:
+        min_distance = float('inf')
+        cluster_idx = -1
 
-# Clustering basé sur DBSCAN avec GPU
-def clustering_molecule_gpu(mol_atoms):
-    if not mol_atoms:
-        return [], []
-    
-    coords = torch.stack([atom_to_tensor(atom) for atom in mol_atoms]).cpu().numpy()
-    db = DBSCAN(eps=10, min_samples=3).fit(coords)
-    
-    print(f"Clustering of {len(coords)} atoms in {len(set(db.labels_))} clusters")
-    
-    clusters = []
-    for cluster_id in set(db.labels_):
-        if cluster_id != -1:  # Ignorer les bruits
-            clusters.append(coords[db.labels_ == cluster_id])
-    
-    cluster_centers = [np.mean(cluster, axis=0) for cluster in clusters]
-    return clusters, cluster_centers
+        # Find the closest cluster
+        for j in range(cluster_coms.shape[0]):
+            if cluster_sizes[j] > 0:  # Check if the cluster exists
+                dx = atom_coms[atom_idx, 0] - cluster_coms[j, 0]
+                dy = atom_coms[atom_idx, 1] - cluster_coms[j, 1]
+                dz = atom_coms[atom_idx, 2] - cluster_coms[j, 2]
+                distance = (dx ** 2 + dy ** 2 + dz ** 2) ** 0.5
+
+                if distance < min_distance:
+                    min_distance = distance
+                    cluster_idx = j
+
+        # Check if the atom belongs to the closest cluster
+        if min_distance * point_spacing < threshold:
+            cuda.atomic.add(cluster_sizes, cluster_idx, 1)
+            clusters[cluster_idx, atom_idx] = 1  # Assign atom to the cluster
+
+
+@cuda.jit
+def update_cluster_coms(atom_coms, clusters, cluster_sizes, cluster_coms):
+    """
+    CUDA kernel to update cluster center of masses (COMs) based on assigned atoms.
+    """
+    cluster_idx = cuda.grid(1)  # Each thread handles one cluster
+    if cluster_idx < clusters.shape[0]:
+        cluster_size = cluster_sizes[cluster_idx]
+        if cluster_size > 0:
+            sum_x, sum_y, sum_z = 0.0, 0.0, 0.0
+            for atom_idx in range(atom_coms.shape[0]):
+                if clusters[cluster_idx, atom_idx] == 1:  # Atom belongs to this cluster
+                    sum_x += atom_coms[atom_idx, 0]
+                    sum_y += atom_coms[atom_idx, 1]
+                    sum_z += atom_coms[atom_idx, 2]
+
+            cluster_coms[cluster_idx, 0] = sum_x / cluster_size
+            cluster_coms[cluster_idx, 1] = sum_y / cluster_size
+            cluster_coms[cluster_idx, 2] = sum_z / cluster_size
+
+
+def clustering_molecule_gpu(atom_coms, threshold=10, point_spacing=POINT_SPACING, max_clusters=1000):
+    """
+    Clustering using GPU for atom-to-cluster assignments and COM updates.
+    """
+    num_atoms = atom_coms.shape[0]
+    clusters = np.zeros((max_clusters, num_atoms), dtype=np.int32)  # Cluster membership matrix
+    cluster_coms = np.zeros((max_clusters, 3), dtype=np.float32)  # Cluster COMs
+    cluster_sizes = np.zeros(max_clusters, dtype=np.int32)  # Number of atoms per cluster
+
+    # Initial assignment of each atom to its own cluster
+    threads_per_block = 128
+    blocks_per_grid = (num_atoms + threads_per_block - 1) // threads_per_block
+
+    for iteration in range(10):  # Iterative clustering
+        # Assign atoms to clusters
+        assign_atoms_to_clusters[blocks_per_grid, threads_per_block](
+            atom_coms, cluster_coms, cluster_sizes, clusters, point_spacing, threshold
+        )
+
+        # Update cluster COMs
+        cluster_blocks = (max_clusters + threads_per_block - 1) // threads_per_block
+        update_cluster_coms[cluster_blocks, threads_per_block](
+            atom_coms, clusters, cluster_sizes, cluster_coms
+        )
+
+    return clusters, cluster_coms
 
 def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):  
     # We show the graph by color depending of the percentage in each cluster (Only center of mass of the cluster)
@@ -89,7 +142,7 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
     ax.set_title(f"({molecule}) Clusters Center of Mass (Color-coded by Percentage)")
     #plt.show(block=False)
     # Save the graph in a file in results folder
-    fig.savefig(f"results/{ligand}_{molecule}_clusters_com.png")
+    fig.savefig(f"{RESULTS_DIR}/{ligand}_{molecule}_clusters_com.png")
     
     # We show the graph by color depending of the percentage in each cluster (Remove abnormal values)
     fig = plt.figure()
@@ -125,7 +178,7 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
     ax.set_title(f"({molecule}) Cluster Surfaces (Cleaned and Color-coded by Percentage)")
     #plt.show(block=True)
     # Save the graph in a file in results folder
-    fig.savefig(f"results/{ligand}_{molecule}_clusters.png")
+    fig.savefig(f"{RESULTS_DIR}/{ligand}_{molecule}_clusters.png")
     # We close the graph
     plt.close('all')
 
@@ -143,7 +196,7 @@ def show_tables_clusters(molecule, clusters, clusters_com, total_atoms):
         print(f"Percentage : {percentage:08.4f}%")
         i += 1
     # Save the data in a file in results folder
-    with open(f"results/{ligand}_{molecule}_results.txt", 'w') as f:
+    with open(f"{RESULTS_DIR}/{ligand}_{molecule}_results.txt", 'w') as f:
         f.write(f"Molecule : {molecule}\n")
         f.write(f"Nb of atoms : {total_atoms}\n")
         f.write(f"Nb of clusters : {len(clusters)}\n")
@@ -179,12 +232,15 @@ def check_time(check_pt):
         time_tabs[f"{len(time_tabs)}-"+check_pt] = end_time - start_time
         start_time = end_time
 def save_time():
-    with open("results/time_cpu.txt", 'w') as f:
+    with open(f"{RESULTS_DIR}/time_cpu.txt", 'w') as f:
         for time in time_tabs:
             f.write(f"{time} : {time_tabs[time]}\n")
 
 # Main
 if __name__ == "__main__":
+    # We create the results directory if it does not exist
+    if not os.path.exists(RESULTS_DIR):
+        os.makedirs(RESULTS_DIR)
     set_spawn_method()
     folder_ligands = ["galactose", "lactose", "minoxidil", "nebivolol", "resveratrol"]
     
