@@ -104,25 +104,30 @@ def clustering_molecule_gpu(atom_coms, threshold=10, point_spacing=POINT_SPACING
     Clustering using GPU for atom-to-cluster assignments and COM updates.
     """
     num_atoms = len(atom_coms)
-    clusters = np.zeros((max_clusters, num_atoms), dtype=np.int32)  # Cluster membership matrix
-    cluster_coms = np.zeros((max_clusters, 3), dtype=np.float32)  # Cluster COMs
-    cluster_sizes = np.zeros(max_clusters, dtype=np.int32)  # Number of atoms per cluster
+    d_atom_coms = cuda.to_device(atom_coms)
+    d_cluster_coms = cuda.to_device(cluster_coms)
+    d_cluster_sizes = cuda.to_device(cluster_sizes)
+    d_clusters = cuda.to_device(clusters)
 
-    # Initial assignment of each atom to its own cluster
     threads_per_block = 128
     blocks_per_grid = (num_atoms + threads_per_block - 1) // threads_per_block
 
-    for iteration in range(10):  # Iterative clustering
-        # Assign atoms to clusters
+    for iteration in range(10):
         assign_atoms_to_clusters[blocks_per_grid, threads_per_block](
-            atom_coms, cluster_coms, cluster_sizes, clusters, point_spacing, threshold
+            d_atom_coms, d_cluster_coms, d_cluster_sizes, d_clusters, point_spacing, threshold
         )
-        print(f"Iteration {iteration + 1} - Nb of clusters : {np.sum(cluster_sizes > 0)}")
-        # Update cluster COMs
+        cuda.synchronize()  # Ensure no errors in the kernel
+        
         cluster_blocks = (max_clusters + threads_per_block - 1) // threads_per_block
         update_cluster_coms[cluster_blocks, threads_per_block](
-            atom_coms, clusters, cluster_sizes, cluster_coms
+            d_atom_coms, d_clusters, d_cluster_sizes, d_cluster_coms
         )
+        cuda.synchronize()
+
+    # Copy back results
+    clusters = d_clusters.copy_to_host()
+    cluster_coms = d_cluster_coms.copy_to_host()
+    cluster_sizes = d_cluster_sizes.copy_to_host()
 
     return clusters, cluster_coms
 
