@@ -13,6 +13,8 @@ from multiprocessing import Pool
 import multiprocessing as mp
 import time
 
+POINT_SPACING=0.375 # Point spacing in Angstroms
+
 def parse_files(directory):
     result = dict()
     pattern = re.compile(r'(\d+)_(\d+)_(\d+)_(\w+)\.dlg')
@@ -90,7 +92,7 @@ def clustering_molecule(mol_atoms):
             # We calculate the distance between the atom and the cluster center of mass
             distance = ((atom_com[0] - cluster_com[0])**2 + (atom_com[1] - cluster_com[1])**2 + (atom_com[2] - cluster_com[2])**2)**0.5
             
-            if distance < 10:
+            if distance*POINT_SPACING < 10:
                 clusters[iCluster].append(atom)
                 # We update the cluster center of mass
                 clusters_com[iCluster] = calculate_COM_cluster(clusters[iCluster])

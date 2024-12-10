@@ -12,6 +12,8 @@ from matplotlib.colors import Normalize
 import matplotlib.pyplot as plt
 import time
 
+POINT_SPACING=0.375 # Point spacing in Angstroms
+
 # Définir le mode de démarrage multiprocessing
 def set_spawn_method():
     try:
