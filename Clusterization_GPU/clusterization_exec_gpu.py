@@ -73,7 +73,7 @@ def clustering_molecule_gpu(mol_atoms):
     Fully parallelized clustering on the GPU.
     """
     # Convert molecule coordinates to a tensor on the GPU
-    mol_coords = [calculate_COM_atom_gpu(atom) for atom in mol_atoms]
+    mol_coords = [calculate_COM_atom_gpu(atom) for atom in tqdm(mol_atoms)]
     mol_coords = torch.stack(mol_coords).to('cuda')  # Shape: (num_atoms, 3)
 
     # Initialize cluster centers
