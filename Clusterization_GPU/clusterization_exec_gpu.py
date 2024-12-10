@@ -12,7 +12,7 @@ from matplotlib.colors import Normalize
 import matplotlib.pyplot as plt
 import time
 
-POINT_SPACING=0.375 # Point spacing in Angstroms
+POINT_SPACING=1 # Point spacing in Angstroms
 
 # Définir le mode de démarrage multiprocessing
 def set_spawn_method():
@@ -107,10 +107,9 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
         if len(cluster) < 3:
             continue
         for atom in cluster:
-            atom_data = atom.split()
-            x.append(float(atom_data[7]))
-            y.append(float(atom_data[8]))
-            z.append(float(atom_data[9]))         
+            x.append(atom[0])
+            y.append(atom[1])
+            z.append(atom[2])        
         z_threshold = 2
         # Nettoyage des valeurs aberrantes
         x, y, z = np.array(x), np.array(y), np.array(z)
