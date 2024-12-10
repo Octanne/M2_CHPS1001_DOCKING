@@ -68,6 +68,8 @@ def clustering_molecule(mol_atoms):
             clusters.append([mol_atoms[i]])
             clusters_com.append(mol_atoms_com[i])
         else:  # Add atom to existing cluster
+            # Convert cluster_idx to a list of integers
+            cluster_idx = cluster_idx.tolist()
             for idx in cluster_idx:
                 clusters[idx].append(mol_atoms[i])
                 clusters_com[idx] = calculate_COM_cluster(clusters[idx])
