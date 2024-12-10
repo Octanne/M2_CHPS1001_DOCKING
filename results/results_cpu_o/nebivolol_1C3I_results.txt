@@ -1,7 +1,0 @@
-Molecule : 1C3I
-Nb of atoms : 12800
-Nb of clusters : 2
-Total percentage : 100.0000%
-| Cluster ID | Nb of atoms | Center of mass | Percentage |
-| Cluster 0000 | 12799 | (-0005.14 +0010.18 -0000.07) | 099.9922% |
-| Cluster 0001 | 0001 | (-0015.14 +0009.08 -0000.01) | 000.0078% |

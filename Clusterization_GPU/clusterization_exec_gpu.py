@@ -71,11 +71,11 @@ def calculate_com_cluster(cluster, cluster_com, atom_com):
 
 # Kernel definition for clustering 
 cluster_kernel = cp.ElementwiseKernel( 
-    'raw float32 x, raw float32 y, raw float32 z, float32 threshold', 
+    'raw float32 x, raw float32 y, raw float32 z, float32 threshold, int32 num_atoms',
     'int32 cluster_index', 
     ''' 
     int idx = i; 
-    for (int j = 0; j < n; j++) { 
+    for (int j = 0; j < num_atoms; j++) { 
         if (j != idx) { 
             float dist = sqrt((x[idx] - x[j]) * (x[idx] - x[j]) 
                             + (y[idx] - y[j]) * (y[idx] - y[j]) 
@@ -112,24 +112,25 @@ def clustering_molecule(mol_atoms):
         cluster_indices = cp.zeros(num_atoms, dtype=cp.int32) 
         
         # Launch the kernel 
-        cluster_kernel(x, y, z, 10.0, cluster_indices)
+        cluster_kernel(x, y, z, 10.0, num_atoms, cluster_indices)
         
         # Process cluster indices to form clusters 
         for j in range(num_atoms): 
-            idx = cluster_indices[j] 
+            idx = int(cluster_indices[j])
             atom_com = section[j] 
-            if idx == j: 
+            if idx == j or idx >= len(clusters): 
                 clusters.append([atom_com]) 
                 clusters_com.append(atom_com) 
             else: 
                 clusters[idx].append(atom_com) 
-                clusters_com[idx] = calculate_com_cluster(clusters[idx], clusters_com[idx], atom_com) 
+                clusters_com[idx] = calculate_com_cluster(clusters[idx], clusters_com[idx], atom_com)
         
-        final_clusters = cp.concatenate([cp.array(c) for c in clusters], axis=0) 
-        final_clusters_com = cp.mean(cp.array(clusters_com), axis=0)
-        assert len(final_clusters) == len(atoms_com_array)
+    final_clusters = cp.concatenate([cp.array(c) for c in clusters], axis=0) 
+    final_clusters_com = cp.mean(cp.array(clusters_com), axis=0)
+    print(len(final_clusters), len(atoms_com_array))
+    assert len(final_clusters) == len(atoms_com_array)
         
-        return final_clusters, final_clusters_com
+    return final_clusters, final_clusters_com
 
 oldcode="""    
 def clustering_molecule(mol_atoms):

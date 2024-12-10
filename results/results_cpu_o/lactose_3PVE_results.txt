@@ -1,9 +1,0 @@
-Molecule : 3PVE
-Nb of atoms : 8432
-Nb of clusters : 4
-Total percentage : 100.0000%
-| Cluster ID | Nb of atoms | Center of mass | Percentage |
-| Cluster 0000 | 8333 | (-0003.94 +0012.07 -0009.64) | 098.8259% |
-| Cluster 0001 | 0073 | (+0000.65 +0007.25 -0012.07) | 000.8657% |
-| Cluster 0002 | 0024 | (-0010.41 +0006.35 -0015.27) | 000.2846% |
-| Cluster 0003 | 0002 | (-0013.26 +0016.84 -0011.65) | 000.0237% |
