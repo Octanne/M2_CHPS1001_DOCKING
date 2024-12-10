@@ -327,7 +327,7 @@ if __name__ == "__main__":
         tasks = [ (molecule, parsed_data, directory_ligand) for molecule in parsed_data ]
 
         # Use multiprocessing pool to process each molecule
-        with Pool(processes=mp.cpu_count()) as pool:  # Adjust number of processes as needed
+        with Pool(processes=mp.cpu_count()/2) as pool:  # Adjust number of processes as needed
             results_async = pool.map(process_molecule, tasks)
             
         # Print the results
