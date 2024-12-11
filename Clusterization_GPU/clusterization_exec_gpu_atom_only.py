@@ -20,7 +20,7 @@ def set_start_method():
         pass
 
 POINT_SPACING=0.375 # Point spacing in Angstroms
-RESULT_FOLDER="results/results_gpu"
+RESULT_FOLDER="results/results_gpu_atom_only"
 CPU_COUNT=8
 ANGSTROMS=10
 NONE_CLUSTER = "[ None ]"
@@ -291,8 +291,8 @@ def clustering_molecule(mol_atoms):
     #print("Nb of clusters before fusion : ", len(clusters))
     
     # We fusion the clusters that are at less than 10 Angstroms from each other by using a kernel
-    _="""clusters, clusters_com = fusion_clusters_cpu(clusters, clusters_com)"""
-    check_time("sect_clusters") # We start the time for the section clustering
+    clusters, clusters_com = fusion_clusters_cpu(clusters, clusters_com)
+    _="""check_time("sect_clusters") # We start the time for the section clustering
     num_sec_gl, gl_com_array, nb_gl_per_section = prepare_data_clusters(clusters_com)
     pool = Pool(min(CPU_COUNT, num_sec_gl))
     results = pool.map(calc_section_gpu, [(i, gl_com_array, nb_gl_per_section, clusters) for i in range(num_sec_gl)])
@@ -302,7 +302,7 @@ def clustering_molecule(mol_atoms):
     clusters_com = []
     for result in results:
         clusters.extend(result[0].values())
-        clusters_com.extend(result[1].values())
+        clusters_com.extend(result[1].values())"""
     
     check_nb_of_atoms(clusters, len(atoms_com_array)) # Check if we have the same number of atoms
     check_time("sect_clusters") # We save the time for the section clustering
@@ -387,9 +387,9 @@ def show_tables_clusters(molecule, clusters, clusters_com, total_atoms):
         f.write(f"Molecule : {molecule}\n")
         f.write(f"Nb of atoms : {total_atoms}\n")
         f.write(f"Nb of clusters : {len(clusters)}\n")
-        i = 0
         total_percentage = sum([len(cluster) / total_atoms * 100 for cluster in clusters])
         f.write(f"Total percentage : {total_percentage:03.4f}%\n")
+        i = 0
         f.write("| Cluster ID | Nb of atoms | Center of mass | Percentage |\n")
         for cluster in clusters:
             f.write(f"| Cluster {i:04d} |")

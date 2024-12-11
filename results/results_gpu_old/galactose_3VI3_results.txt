@@ -1,9 +1,0 @@
-Molecule : 3VI3
-Nb of atoms : 58633
-Nb of clusters : 4
-Total percentage : 10.0626%
-| Cluster ID | Nb of atoms | Center of mass | Percentage |
-| Cluster 0000 | 2950 | (+0008.69 -0005.83 -0018.09) | 005.0313% |
-| Cluster 0001 | 0104 | (-0000.09 -0010.49 -0011.96) | 000.1774% |
-| Cluster 0002 | 1518 | (+0015.05 +0002.36 -0012.16) | 002.5890% |
-| Cluster 0003 | 1328 | (+0012.46 +0016.12 -0011.70) | 002.2649% |

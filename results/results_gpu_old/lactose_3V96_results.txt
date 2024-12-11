@@ -1,6 +1,0 @@
-Molecule : 3V96
-Nb of atoms : 9176
-Nb of clusters : 1
-Total percentage : 10.8980%
-| Cluster ID | Nb of atoms | Center of mass | Percentage |
-| Cluster 0000 | 1000 | (+0049.10 +0000.33 -0008.53) | 010.8980% |

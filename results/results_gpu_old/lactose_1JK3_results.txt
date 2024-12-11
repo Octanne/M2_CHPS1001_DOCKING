@@ -1,7 +1,0 @@
-Molecule : 1JK3
-Nb of atoms : 9796
-Nb of clusters : 2
-Total percentage : 10.2082%
-| Cluster ID | Nb of atoms | Center of mass | Percentage |
-| Cluster 0000 | 0992 | (+0007.86 +0002.62 -0002.62) | 010.1266% |
-| Cluster 0001 | 0008 | (-0000.59 -0002.58 +0000.91) | 000.0817% |

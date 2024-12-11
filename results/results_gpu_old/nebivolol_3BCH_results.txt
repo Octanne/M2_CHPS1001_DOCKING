@@ -1,7 +1,0 @@
-Molecule : 3BCH
-Nb of atoms : 14400
-Nb of clusters : 2
-Total percentage : 10.4167%
-| Cluster ID | Nb of atoms | Center of mass | Percentage |
-| Cluster 0000 | 1183 | (+0026.30 +0012.56 -0000.39) | 008.2153% |
-| Cluster 0001 | 0317 | (+0017.24 +0019.76 -0000.26) | 002.2014% |

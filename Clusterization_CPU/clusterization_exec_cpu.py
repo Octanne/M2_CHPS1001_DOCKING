@@ -162,23 +162,12 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
     plt.close('all')
 
 def show_tables_clusters(molecule, clusters, clusters_com, total_atoms):
-    # We show the tables of the clusters
-    i = 0
-    total_percentage = 0
-    for cluster in clusters:
-        print(f"Cluster {i:04d} :", end=' | ')
-        print(f"Nb of atoms : {len(cluster):04d}", end=' | ')
-        com_cluster = f"({clusters_com[i][0]:+08.2f} {clusters_com[i][1]:+08.2f} {clusters_com[i][2]:+08.2f})"
-        print(f"Center of mass : {com_cluster}", end=' | ')
-        percentage = len(cluster) / total_atoms * 100
-        total_percentage += percentage
-        print(f"Percentage : {percentage:08.4f}%")
-        i += 1
     # Save the data in a file in results folder
     with open(f"{RESULT_FOLDER}/{ligand}_{molecule}_results.txt", 'w') as f:
         f.write(f"Molecule : {molecule}\n")
         f.write(f"Nb of atoms : {total_atoms}\n")
         f.write(f"Nb of clusters : {len(clusters)}\n")
+        total_percentage = sum([len(cluster) / total_atoms * 100 for cluster in clusters])
         f.write(f"Total percentage : {total_percentage:03.4f}%\n")
         i = 0
         f.write("| Cluster ID | Nb of atoms | Center of mass | Percentage |\n")
@@ -188,8 +177,10 @@ def show_tables_clusters(molecule, clusters, clusters_com, total_atoms):
             com_cluster = f"({clusters_com[i][0]:+08.2f} {clusters_com[i][1]:+08.2f} {clusters_com[i][2]:+08.2f})"
             f.write(f" {com_cluster} |")
             percentage = len(cluster) / total_atoms * 100
+            total_percentage += percentage
             f.write(f" {percentage:08.4f}% |\n")
             i += 1
+        
 
 def process_molecule(args):
     molecule, parsed_data, directory_ligand, ligand = args

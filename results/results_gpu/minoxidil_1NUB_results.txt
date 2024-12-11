@@ -1,0 +1,6 @@
+Molecule : 1NUB
+Nb of atoms : 19000
+Nb of clusters : 1
+Total percentage : 100.0000%
+| Cluster ID | Nb of atoms | Center of mass | Percentage |
+| Cluster 0000 | 19000 | (+0007.56 +0013.63 +0013.52) | 100.0000% |
