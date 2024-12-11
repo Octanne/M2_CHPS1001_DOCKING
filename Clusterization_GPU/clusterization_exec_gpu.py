@@ -39,15 +39,6 @@ def parse_files(directory):
             result[molecule_name].append(filename)
     return result
 
-def print_molecule(directory):
-    parsed_data = parse_files(directory)
-    molecule_nb = 1
-    for data in parsed_data:
-        print(f"Molecule {data} ({molecule_nb}) :")
-        for file in parsed_data[data]:
-            print(f"{file}")
-        molecule_nb += 1
-
 def filter_molecule(molecule, mol_files, directory_ligand):
     mol_atoms = list() # We store the atoms of the molecule that or interesting
     # We read each file for the molecule
@@ -69,7 +60,7 @@ def calculate_com_atom(atom):
     atom_x = atom_data[7]
     atom_y = atom_data[8]
     atom_z = atom_data[9]
-    return cp.array([float(atom_x), float(atom_y), float(atom_z)], dtype=cp.float32)
+    return cp.array([float(atom_x)*POINT_SPACING, float(atom_y)*POINT_SPACING, float(atom_z)*POINT_SPACING], dtype=cp.float32)
 
 def calculate_com_cluster(cluster, cluster_com, atom_com):
     # We add atom_com to the mean of the cluster
@@ -153,12 +144,16 @@ def calc_section_gpu(args):
     
     # Launch the kernel 
     cluster_atom_kernel(x, y, z, ANGSTROMS, num_atoms, cluster_indices)
-    print("sector : ", i)
+    
+    #first=i*nb_atoms_per_section
+    #last=(i+1)*nb_atoms_per_section-1
+    #print("Section", i, f"cluster indices {first} to {last} :")
+    
+    #print(f"Section {i} nb_cluster on the section : {num_atoms}")
+    #print(f"Section {i} cluster_indices : {cluster_indices}")
     
     clusters = dict()
     clusters_com = dict()
-    
-    print("cluster_indices : ", cluster_indices)
     
     # Process cluster indices to form clusters
     if clusters_past is None:
@@ -166,14 +161,29 @@ def calc_section_gpu(args):
             atom_com = section[atom_id] # Il s'agit du centre de masse de l'atome
             atom_id_group = int(cluster_indices[atom_id]) # Il s'agit de l'indice de l'atome vers lequel l'atome pointe
             
+            # On vérifie si lui même n'est pas utilisé par d'autres atomes
+            if atom_id in clusters.keys():
+                atom_id_group = atom_id
+                # On l'update dans le dico des indices
+                cluster_indices[atom_id] = atom_id_group
             # Pour faire repointer les atomes d'un cluster qui pointes vers un atome déjà dans un cluster
-            if atom_id_group in clusters:
-                atom_id_group = cluster_indices[atom_id_group]
-            # Si le cluster n'existe pas on le crée
-            else:
-                clusters[atom_id_group] = [atom_com]
-                clusters_com[atom_id_group] = atom_com
-                continue
+            elif atom_id_group not in clusters.keys():
+                # Faire recursive qui remonte les atomes qui pointent vers un atome déjà dans un cluster si pas dans un cluster a la fin de la chaine
+                # alors on le met dans un cluster de atom_id_group
+                anti_loop = []
+                potential_id_group = atom_id_group
+                while int(cluster_indices[potential_id_group]) not in clusters.keys() and int(cluster_indices[potential_id_group]) not in anti_loop:
+                    anti_loop.append(potential_id_group)
+                    potential_id_group = int(cluster_indices[potential_id_group])
+                if int(cluster_indices[potential_id_group]) in clusters.keys():
+                    atom_id_group = int(cluster_indices[potential_id_group])
+                    # On l'update dans le dico des indices
+                    cluster_indices[atom_id] = atom_id_group
+                else:
+                    # On crée un nouveau cluster
+                    clusters[atom_id_group] = [atom_com]
+                    clusters_com[atom_id_group] = atom_com
+                    continue
             
             # Si le cluster existe on ajoute l'atome au cluster
             clusters_com[atom_id_group] = calculate_com_cluster(clusters[atom_id_group], clusters_com[atom_id_group], atom_com)
@@ -182,21 +192,34 @@ def calc_section_gpu(args):
         for cluster_id in range(num_atoms):
             cluster_com = section[cluster_id] # Il s'agit du centre de masse du cluster
             cluster_id_group = int(cluster_indices[cluster_id]) # Il s'agit de l'indice du cluster vers lequel le cluster pointe
-            cluster_members = clusters_past[cluster_id_group+i*nb_atoms_per_section] # Il s'agit des membres du cluster
             
-            # Pour faire repointer les clusters qui pointes vers un cluster déjà dans un cluster
-            if cluster_id_group in clusters:
-                cluster_id_group = cluster_indices[cluster_id_group]
-            # Si le cluster n'existe pas on le crée
-            else:
-                clusters[cluster_id_group] = cluster_members
-                clusters_com[cluster_id_group] = cluster_com
-                continue
+            # On vérifie si lui même n'est pas utilisé par d'autres atomes
+            if cluster_id in clusters.keys():
+                cluster_id_group = cluster_id
+                # On l'update dans le dico des indices
+                cluster_indices[cluster_id] = cluster_id_group
+            # Pour faire repointer les atomes d'un cluster qui pointes vers un atome déjà dans un cluster
+            elif cluster_id_group not in clusters.keys():
+                # Faire recursive qui remonte les atomes qui pointent vers un atome déjà dans un cluster si pas dans un cluster a la fin de la chaine
+                # alors on le met dans un cluster de cluster_id_group
+                anti_loop = []
+                potential_id_group = cluster_id_group
+                while int(cluster_indices[potential_id_group]) not in clusters.keys() and int(cluster_indices[potential_id_group]) not in anti_loop:
+                    anti_loop.append(potential_id_group)
+                    potential_id_group = int(cluster_indices[potential_id_group])
+                if int(cluster_indices[potential_id_group]) in clusters.keys():
+                    cluster_id_group = int(cluster_indices[potential_id_group])
+                    # On l'update dans le dico des indices
+                    cluster_indices[cluster_id] = cluster_id_group
+                else:
+                    clusters[cluster_id_group] = clusters_past[cluster_id+i*nb_atoms_per_section]
+                    clusters_com[cluster_id_group] = cluster_com
+                    continue
             
             # Si le cluster existe on ajoute le cluster au cluster
-            clusters_com[cluster_id_group] = calculate_com_cluster_combine(clusters_past[cluster_id_group+i*nb_atoms_per_section], clusters_com[cluster_id_group], cluster_members, cluster_com)
-            clusters[cluster_id_group].extend(cluster_members)
-            
+            clusters_com[cluster_id_group] = calculate_com_cluster_combine(clusters[cluster_id_group], clusters_com[cluster_id_group], clusters_past[cluster_id+i*nb_atoms_per_section], cluster_com)
+            clusters[cluster_id_group].extend(clusters_past[cluster_id+i*nb_atoms_per_section])
+    
     return clusters, clusters_com
 
 def prepare_data_atoms(mol_atoms):
@@ -224,12 +247,16 @@ def prepare_data_clusters(glusters_com):
     
     check_time("sort_glusters") # We start the time for the sorting
     glusters_com_array = cp.array(glusters_com, dtype=cp.float32)  # Move atoms_com to GPU
+    #print(f"Clusters com array : {glusters_com_array}")
     # We sort the atoms by the z axis then the y axis then the x axis
-    glusters_com_array = glusters_com_array[cp.lexsort(cp.stack((glusters_com_array[:, 0], glusters_com_array[:, 1], glusters_com_array[:, 2])))]
+    #clusters_sort_index = cp.lexsort(cp.stack((glusters_com_array[:, 0], glusters_com_array[:, 1], glusters_com_array[:, 2])))
+    #glusters_com_array = glusters_com_array[clusters_sort_index]
+    #print(f"Clusters com array sorted : {glusters_com_array}")
+    #print(f"Clusters sort index : {clusters_sort_index}")
     check_time("sort_glusters") # We save the time for the sorting
     
     check_time("calc_sections_glusters") # We start the time for the copy to device
-    nb_gl_per_section = 4500
+    nb_gl_per_section = 8
     num_sections = (len(glusters_com_array) + (nb_gl_per_section-1)) // nb_gl_per_section 
     check_time("calc_sections_glusters") # We save the time for the copy to device
     
@@ -239,7 +266,7 @@ def check_nb_of_atoms(clusters, supposed_nb_atoms):
     nb_total_atoms = 0
     for i in clusters:
         nb_total_atoms += len(i)
-    assert nb_total_atoms == supposed_nb_atoms # Check if we have the same number of atoms
+    assert nb_total_atoms == supposed_nb_atoms, f"Nb of atoms : {nb_total_atoms} != Nb of supposed atoms : {supposed_nb_atoms}"
 
 def clustering_molecule(mol_atoms): 
     check_time("clustering") # We start the time for the clustering
@@ -251,21 +278,18 @@ def clustering_molecule(mol_atoms):
     check_time("sect_atoms") # We start the time for the section clustering
     pool = Pool(min(CPU_COUNT, num_sections))
     results = pool.map(calc_section_gpu, [(i, atoms_com_array, nb_atoms_per_section) for i in range(num_sections)])
-    
     # get the results from the pool and fusion the dict
     clusters = []
     clusters_com = []
-    already_done_keys = []
     for result in results:
-        for key in result[0]:
-            assert key not in already_done_keys # Check if the key is not already in the clusters
-            already_done_keys.append(key)
-            clusters.append(result[0][key])
-            clusters_com.append(result[1][key])
+        clusters.extend(result[0].values())
+        clusters_com.extend(result[1].values())
     check_time("sect_atoms") # We save the time for the section clustering
     
     check_nb_of_atoms(clusters, len(atoms_com_array)) # Check if we have the same number of atoms
-                
+    
+    print("Nb of clusters before fusion : ", len(clusters))
+    
     # We fusion the clusters that are at less than 10 Angstroms from each other by using a kernel
     _="""clusters, clusters_com = fusion_clusters_cpu(clusters, clusters_com)"""
     check_time("sect_clusters") # We start the time for the section clustering
@@ -276,13 +300,9 @@ def clustering_molecule(mol_atoms):
     # get the results from the pool and fusion the dict
     clusters = []
     clusters_com = []
-    already_done_keys = []
     for result in results:
-        for key in result[0]:
-            assert key not in already_done_keys # Check if the key is not already in the clusters
-            already_done_keys.append(key)
-            clusters.append(result[0][key])
-            clusters_com.append(result[1][key])
+        clusters.extend(result[0].values())
+        clusters_com.extend(result[1].values())
     
     check_nb_of_atoms(clusters, len(atoms_com_array)) # Check if we have the same number of atoms
     check_time("sect_clusters") # We save the time for the section clustering
