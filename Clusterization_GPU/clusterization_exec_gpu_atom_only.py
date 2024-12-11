@@ -3,7 +3,6 @@ import re
 
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from matplotlib.cm import get_cmap
 from matplotlib.colors import Normalize
 import numpy as np
 import cupy as cp
@@ -99,8 +98,8 @@ cluster_atom_kernel = cp.ElementwiseKernel(
     'cluster_atom_kernel' )
     
 def fusion_clusters_cpu(clusters, clusters_com):
-    for i in clusters_com.keys():
-        for j in clusters_com.keys():
+    for i in range(len(clusters_com)):
+        for j in range(len(clusters_com)):
             if i != j:
                 if clusters[i] == NONE_CLUSTER or clusters[j] == NONE_CLUSTER:
                     continue
@@ -115,7 +114,7 @@ def fusion_clusters_cpu(clusters, clusters_com):
     # We convert the clusters and clusters_com to the final list
     final_clusters = []
     final_clusters_com = []
-    for i in clusters_com.keys():
+    for i in range(len(clusters_com)):
         if clusters[i] != NONE_CLUSTER:
             final_clusters.append(clusters[i])
             final_clusters_com.append(clusters_com[i])

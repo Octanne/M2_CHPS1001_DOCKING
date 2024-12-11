@@ -3,7 +3,6 @@ import re
 
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from matplotlib.cm import get_cmap
 from matplotlib.colors import Normalize
 import numpy as np
 
@@ -105,7 +104,7 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
     # We show the graph by color depending of the percentage in each cluster (Only center of mass of the cluster)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    cmap = get_cmap('coolwarm')  # Palette de couleurs du bleu au rouge
+    cmap = plt.get_cmap('coolwarm')  # Palette de couleurs du bleu au rouge
     # Calculer les pourcentages
     percentages = [len(cluster) / total_atoms for cluster in clusters]
     # Normalisation dynamique basée sur les pourcentages
@@ -126,7 +125,7 @@ def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
     # We show the graph by color depending of the percentage in each cluster (Remove abnormal values)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    cmap = get_cmap('coolwarm')  # Palette de couleurs du bleu au rouge
+    cmap = plt.get_cmap('coolwarm')  # Palette de couleurs du bleu au rouge
     # Calculer les pourcentages
     percentages = [len(cluster) / total_atoms for cluster in clusters if len(cluster) >= 3]
     # Normalisation dynamique basée sur les pourcentages

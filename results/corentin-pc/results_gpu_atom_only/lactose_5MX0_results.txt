@@ -1,0 +1,7 @@
+Molecule : 5MX0
+Nb of atoms : 23560
+Nb of clusters : 2
+Total percentage : 100.0000%
+| Cluster ID | Nb of atoms | Center of mass | Percentage |
+| Cluster 0000 | 19644 | (-0012.92 +0011.12 +0057.90) | 083.3786% |
+| Cluster 0001 | 3916 | (-0028.89 +0004.07 +0060.76) | 016.6214% |

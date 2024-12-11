@@ -1,0 +1,7 @@
+Molecule : 1L6J
+Nb of atoms : 26598
+Nb of clusters : 2
+Total percentage : 100.0000%
+| Cluster ID | Nb of atoms | Center of mass | Percentage |
+| Cluster 0000 | 26489 | (+0015.79 +0016.85 +0016.16) | 099.5902% |
+| Cluster 0001 | 0109 | (+0012.52 +0002.60 +0012.56) | 000.4098% |

@@ -3,7 +3,6 @@ import re
 
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from matplotlib.cm import get_cmap
 from matplotlib.colors import Normalize
 import numpy as np
 import cupy as cp
@@ -20,7 +19,7 @@ def set_start_method():
         pass
 
 POINT_SPACING=0.375 # Point spacing in Angstroms
-RESULT_FOLDER="results/results_gpu"
+RESULT_FOLDER="results/corentin-pc/results_gpu_clus_100_atoms_2250"
 CPU_COUNT=8
 ANGSTROMS=10
 NONE_CLUSTER = "[ None ]"
@@ -234,7 +233,7 @@ def prepare_data_atoms(mol_atoms):
     check_time("sort_atoms") # We save the time for the sorting
     
     check_time("calc_sections_atoms") # We start the time for the copy to device
-    nb_atoms_per_section = 4500
+    nb_atoms_per_section = 2250
     num_sections = (len(atoms_com_array) + (nb_atoms_per_section-1)) // nb_atoms_per_section 
     check_time("calc_sections_atoms") # We save the time for the copy to device
     
@@ -256,7 +255,7 @@ def prepare_data_clusters(glusters_com):
     check_time("sort_glusters") # We save the time for the sorting
     
     check_time("calc_sections_glusters") # We start the time for the copy to device
-    nb_gl_per_section = 8
+    nb_gl_per_section = 100
     num_sections = (len(glusters_com_array) + (nb_gl_per_section-1)) // nb_gl_per_section 
     check_time("calc_sections_glusters") # We save the time for the copy to device
     
