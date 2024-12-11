@@ -22,6 +22,8 @@ def set_start_method():
 POINT_SPACING=0.375 # Point spacing in Angstroms
 RESULT_FOLDER="results/results_gpu"
 CPU_COUNT=8
+ANGSTROMS=10
+NONE_CLUSTER = "[ None ]"
 
 def parse_files(directory):
     result = dict()
@@ -104,67 +106,38 @@ cluster_atom_kernel = cp.ElementwiseKernel(
     } 
     cluster_index = idx; ''', 
     'cluster_atom_kernel' )
-
-def clustering_molecule_sect(mol_atoms):    
-    # We convert the list of atoms in a list of center of mass
-    atoms_com = cp.array([calculate_com_atom(atom) for atom in mol_atoms], dtype=cp.float32)
-    # We offload the atoms_com to the GPU
-    atoms_com = cp.array(atoms_com)
-    # We sort the atoms_com by the z axis then the y axis then the x axis
-    sort_indices = cp.lexsort(cp.stack((atoms_com[:, 0], atoms_com[:, 1], atoms_com[:, 2])))
-    atoms_com = atoms_com[sort_indices]
-        
-    # We define the number of atoms per section and the threshold for clustering
-    nb_atoms = len(atoms_com)
-    nb_atoms_per_section = 2500
-    nb_sections = (len(atoms_com) + (nb_atoms_per_section-1)) // nb_atoms_per_section
-    ANGSTROMS = 10.0
     
-    # We create the list of clusters and clusters_com in the GPU
-    clusters = cp.zeros((nb_atoms, 3), dtype=cp.float32, order='C')
-    clusters_com = cp.zeros((nb_atoms, 3), dtype=cp.float32, order='C')
-    
-    print("cluster : ", clusters)
-    
-    # We flatten the atoms_com array to be able to process it in the kernel
-    atoms_comX = cp.ascontiguousarray(atoms_com[:, 0].flatten())
-    atoms_comY = cp.ascontiguousarray(atoms_com[:, 1].flatten())
-    atoms_comZ = cp.ascontiguousarray(atoms_com[:, 2].flatten())
-    
-    print(f"Nb of atoms : {nb_atoms}")
-    print(f"Nb of sections : {nb_sections}")
-    print(f"atoms_comX : {atoms_comX}")
-    print(f"atoms_comY : {atoms_comY}")
-    print(f"atoms_comZ : {atoms_comZ}")
-    
-    threads_per_block = 256
-    blocks_per_grid = (nb_sections + (threads_per_block - 1)) // threads_per_block
-    print(f"Threads per block : {threads_per_block}")
-    
-    # We process the sections in parallel with the GPU (CUDA) and we merge the results in the CPU
-    
-    # We fusion the clusters that are at less than 10 Angstroms from each other by using a kernel
-    # TODO : We have to do this in the GPU with a kernel to be faster and more efficient (to be done)
-    NONE_CLUSTER = cp.zeros((0, 3), dtype=cp.float32)
-    for i in range(len(clusters_com)):
-        for j in range(len(clusters_com)):
+def fusion_clusters_cpu(clusters, clusters_com):
+    for i in clusters_com.keys():
+        for j in clusters_com.keys():
             if i != j:
-                if cp.array_equal(clusters[i], NONE_CLUSTER) or cp.array_equal(clusters[j], NONE_CLUSTER):
+                if clusters[i] == NONE_CLUSTER or clusters[j] == NONE_CLUSTER:
                     continue
-                dist = cp.linalg.norm(clusters_com[i] - clusters_com[j])
+                dist = cp.linalg.norm(cp.array(clusters_com[i]) - cp.array(clusters_com[j]))
                 if dist < ANGSTROMS:
-                    clusters[i] = cp.concatenate((clusters[i], clusters[j]), axis=0)
                     clusters_com[i] = calculate_com_cluster_combine(clusters[i], clusters_com[i], clusters[j], clusters_com[j])
-                    clusters[j] = NONE_CLUSTER
-                    clusters_com[j] = NONE_CLUSTER
+                    clusters[i] = clusters[i] + clusters[j]
+                    clusters[j] = NONE_CLUSTER # We put the cluster to a value that is not possible
+                    clusters_com[j] = NONE_CLUSTER # We put the cluster_com to a value that is not possible
+                    
+    check_time("final") # We start the time for the final clustering
     # We convert the clusters and clusters_com to the final list
-    final_clusters = [cluster for cluster in clusters if not cp.array_equal(cluster, NONE_CLUSTER)]
-    final_clusters_com = [cluster_com for cluster_com in clusters_com if not cp.array_equal(cluster_com, NONE_CLUSTER)]
-    
+    final_clusters = []
+    final_clusters_com = []
+    for i in clusters_com.keys():
+        if clusters[i] != NONE_CLUSTER:
+            final_clusters.append(clusters[i])
+            final_clusters_com.append(clusters_com[i])
+    check_time("final") # We save the time for the final clustering
+
     return final_clusters, final_clusters_com
     
-def calc_section(args):
-    i, atoms_com_array, nb_atoms_per_section, ANGSTROMS = args
+def calc_section_gpu(args):
+    if len(args) == 3:
+        i, atoms_com_array, nb_atoms_per_section = args
+        clusters_past = None
+    else:
+        i, atoms_com_array, nb_atoms_per_section, clusters_past = args
     
     section = atoms_com_array[i*nb_atoms_per_section:(i+1)*nb_atoms_per_section] 
     num_atoms = section.shape[0]
@@ -185,116 +158,148 @@ def calc_section(args):
     clusters = dict()
     clusters_com = dict()
     
-    # Process cluster indices to form clusters 
-    for j in range(num_atoms):
-        idx = int(cluster_indices[j]+i*nb_atoms_per_section) # We add the offset of the section
-        atom_com = section[j]
-        if idx not in clusters:
-            clusters[idx] = [atom_com]
-            clusters_com[idx] = atom_com
-        else:
-            clusters[idx].append(atom_com)
-            clusters_com[idx] = calculate_com_cluster(clusters[idx], clusters_com[idx], atom_com)
+    print("cluster_indices : ", cluster_indices)
+    
+    # Process cluster indices to form clusters
+    if clusters_past is None:
+        for atom_id in range(num_atoms):
+            atom_com = section[atom_id] # Il s'agit du centre de masse de l'atome
+            atom_id_group = int(cluster_indices[atom_id]) # Il s'agit de l'indice de l'atome vers lequel l'atome pointe
+            
+            # Pour faire repointer les atomes d'un cluster qui pointes vers un atome déjà dans un cluster
+            if atom_id_group in clusters:
+                atom_id_group = cluster_indices[atom_id_group]
+            # Si le cluster n'existe pas on le crée
+            else:
+                clusters[atom_id_group] = [atom_com]
+                clusters_com[atom_id_group] = atom_com
+                continue
+            
+            # Si le cluster existe on ajoute l'atome au cluster
+            clusters_com[atom_id_group] = calculate_com_cluster(clusters[atom_id_group], clusters_com[atom_id_group], atom_com)
+            clusters[atom_id_group].append(atom_com)
+    else:
+        for cluster_id in range(num_atoms):
+            cluster_com = section[cluster_id] # Il s'agit du centre de masse du cluster
+            cluster_id_group = int(cluster_indices[cluster_id]) # Il s'agit de l'indice du cluster vers lequel le cluster pointe
+            cluster_members = clusters_past[cluster_id_group+i*nb_atoms_per_section] # Il s'agit des membres du cluster
+            
+            # Pour faire repointer les clusters qui pointes vers un cluster déjà dans un cluster
+            if cluster_id_group in clusters:
+                cluster_id_group = cluster_indices[cluster_id_group]
+            # Si le cluster n'existe pas on le crée
+            else:
+                clusters[cluster_id_group] = cluster_members
+                clusters_com[cluster_id_group] = cluster_com
+                continue
+            
+            # Si le cluster existe on ajoute le cluster au cluster
+            clusters_com[cluster_id_group] = calculate_com_cluster_combine(clusters_past[cluster_id_group+i*nb_atoms_per_section], clusters_com[cluster_id_group], cluster_members, cluster_com)
+            clusters[cluster_id_group].extend(cluster_members)
             
     return clusters, clusters_com
+
+def prepare_data_atoms(mol_atoms):
+    check_time("calc_com_atoms") # We start the time for the center of mass calculation
+    atoms_com = [calculate_com_atom(atom) for atom in mol_atoms]
+    check_time("calc_com_atoms") # We save the time for the center of mass calculation
+    
+    check_time("sort_atoms") # We start the time for the sorting
+    atoms_com_array = cp.array(atoms_com, dtype=cp.float32)  # Move atoms_com to GPU
+    # We sort the atoms by the z axis then the y axis then the x axis
+    atoms_com_array = atoms_com_array[cp.lexsort(cp.stack((atoms_com_array[:, 0], atoms_com_array[:, 1], atoms_com_array[:, 2])))]
+    check_time("sort_atoms") # We save the time for the sorting
+    
+    check_time("calc_sections_atoms") # We start the time for the copy to device
+    nb_atoms_per_section = 4500
+    num_sections = (len(atoms_com_array) + (nb_atoms_per_section-1)) // nb_atoms_per_section 
+    check_time("calc_sections_atoms") # We save the time for the copy to device
+    
+    return num_sections, atoms_com_array, nb_atoms_per_section
+
+def prepare_data_clusters(glusters_com):
+    check_time("calc_com_glusters") # We start the time for the center of mass calculation
+    glusters_com = [gluster for gluster in glusters_com]
+    check_time("calc_com_glusters") # We save the time for the center of mass calculation
+    
+    check_time("sort_glusters") # We start the time for the sorting
+    glusters_com_array = cp.array(glusters_com, dtype=cp.float32)  # Move atoms_com to GPU
+    # We sort the atoms by the z axis then the y axis then the x axis
+    glusters_com_array = glusters_com_array[cp.lexsort(cp.stack((glusters_com_array[:, 0], glusters_com_array[:, 1], glusters_com_array[:, 2])))]
+    check_time("sort_glusters") # We save the time for the sorting
+    
+    check_time("calc_sections_glusters") # We start the time for the copy to device
+    nb_gl_per_section = 4500
+    num_sections = (len(glusters_com_array) + (nb_gl_per_section-1)) // nb_gl_per_section 
+    check_time("calc_sections_glusters") # We save the time for the copy to device
+    
+    return num_sections, glusters_com_array, nb_gl_per_section
+
+def check_nb_of_atoms(clusters, supposed_nb_atoms):
+    nb_total_atoms = 0
+    for i in clusters:
+        nb_total_atoms += len(i)
+    assert nb_total_atoms == supposed_nb_atoms # Check if we have the same number of atoms
 
 def clustering_molecule(mol_atoms): 
     check_time("clustering") # We start the time for the clustering
     
     check_time("preparation") # We start the time
-    
-    check_time("calc_com") # We start the time for the center of mass calculation
-    # TODO faire calc en parallèle
-    atoms_com = [calculate_com_atom(atom) for atom in mol_atoms]
-    check_time("calc_com") # We save the time for the center of mass calculation
-    
-    check_time("sort") # We start the time for the sorting
-    atoms_com_array = cp.array(atoms_com, dtype=cp.float32)  # Move atoms_com to GPU
-    # We sort the atoms by the z axis then the y axis then the x axis
-    atoms_com_array = atoms_com_array[cp.lexsort(cp.stack((atoms_com_array[:, 0], atoms_com_array[:, 1], atoms_com_array[:, 2])))]
-    check_time("sort") # We save the time for the sorting
-    
-    check_time("calc sections") # We start the time for the copy to device
-    ANGSTROMS = 10.0
-    nb_atoms_per_section = 4500
-    num_sections = (len(atoms_com_array) + (nb_atoms_per_section-1)) // nb_atoms_per_section 
-    check_time("calc sections") # We save the time for the copy to device
-    
+    num_sections, atoms_com_array, nb_atoms_per_section = prepare_data_atoms(mol_atoms)
     check_time("preparation") # We save the time
 
-    check_time("sect") # We start the time for the section clustering
-    # TODO make a pool to calc section in parallel
+    check_time("sect_atoms") # We start the time for the section clustering
     pool = Pool(min(CPU_COUNT, num_sections))
-    results = pool.map(calc_section, [(i, atoms_com_array, nb_atoms_per_section, ANGSTROMS) for i in range(num_sections)])
+    results = pool.map(calc_section_gpu, [(i, atoms_com_array, nb_atoms_per_section) for i in range(num_sections)])
     
     # get the results from the pool and fusion the dict
-    clusters = dict()
-    clusters_com = dict()
+    clusters = []
+    clusters_com = []
+    already_done_keys = []
     for result in results:
         for key in result[0]:
-            assert key not in clusters # Check if the key is not already in the clusters
-            clusters[key] = result[0][key]
-            clusters_com[key] = result[1][key]
-    check_time("sect") # We save the time for the section clustering
+            assert key not in already_done_keys # Check if the key is not already in the clusters
+            already_done_keys.append(key)
+            clusters.append(result[0][key])
+            clusters_com.append(result[1][key])
+    check_time("sect_atoms") # We save the time for the section clustering
     
-    check_time("final") # We start the time for the final clustering
-    final_clusters = []
-    final_clusters_com = []
-    
-    nb_total_atoms = 0
-    for i in clusters.keys():
-        nb_total_atoms += len(clusters[i])
-    assert nb_total_atoms == len(atoms_com) # Check if we have the same number of atoms
+    check_nb_of_atoms(clusters, len(atoms_com_array)) # Check if we have the same number of atoms
                 
     # We fusion the clusters that are at less than 10 Angstroms from each other by using a kernel
-    # TODO : We have to do this in the GPU with a kernel to be faster and more efficient (to be done)
-    NONE_CLUSTER = "[ None ]"
-    for i in clusters_com.keys():
-        for j in clusters_com.keys():
-            if i != j:
-                if clusters[i] == NONE_CLUSTER or clusters[j] == NONE_CLUSTER:
-                    continue
-                dist = cp.linalg.norm(cp.array(clusters_com[i]) - cp.array(clusters_com[j]))
-                if dist < ANGSTROMS:
-                    clusters[i] = clusters[i] + clusters[j]
-                    clusters_com[i] = calculate_com_cluster_combine(clusters[i], clusters_com[i], clusters[j], clusters_com[j])
-                    clusters[j] = NONE_CLUSTER # We put the cluster to a value that is not possible
-                    clusters_com[j] = NONE_CLUSTER # We put the cluster_com to a value that is not possible
-    # We convert the clusters and clusters_com to the final list
-    for i in clusters_com.keys():
-        if clusters[i] != NONE_CLUSTER:
-            final_clusters.append(clusters[i])
-            final_clusters_com.append(clusters_com[i])
-    check_time("final") # We save the time for the final clustering
+    _="""clusters, clusters_com = fusion_clusters_cpu(clusters, clusters_com)"""
+    check_time("sect_clusters") # We start the time for the section clustering
+    num_sec_gl, gl_com_array, nb_gl_per_section = prepare_data_clusters(clusters_com)
+    pool = Pool(min(CPU_COUNT, num_sec_gl))
+    results = pool.map(calc_section_gpu, [(i, gl_com_array, nb_gl_per_section, clusters) for i in range(num_sec_gl)])
+    
+    # get the results from the pool and fusion the dict
+    clusters = []
+    clusters_com = []
+    already_done_keys = []
+    for result in results:
+        for key in result[0]:
+            assert key not in already_done_keys # Check if the key is not already in the clusters
+            already_done_keys.append(key)
+            clusters.append(result[0][key])
+            clusters_com.append(result[1][key])
+    
+    check_nb_of_atoms(clusters, len(atoms_com_array)) # Check if we have the same number of atoms
+    check_time("sect_clusters") # We save the time for the section clustering
     
     check_time("clustering") # We save the time for the clustering
     save_time()
     
-    return final_clusters, final_clusters_com
-
-oldcode="""    
-def clustering_molecule(mol_atoms):
-    # We create a list of clusters
-    clusters = list()
-    # We create a list of center of mass for each cluster
-    clusters_com = list()
-    # We convert the list of atoms in a list of center of mass
-    atoms_com = [calculate_com_atom(atom) for atom in mol_atoms]
-    
-    # We sort the atoms by the z axis then the y axis then the x axis
-    atoms_com.sort(key=lambda x: (x[2], x[1], x[0]))
-    
-    # We process the list of atoms to create the clusters in GPU by sections of 100 atoms (to avoid memory overflow)
-    # We do the clustering by sections of 100 atoms in parallel with the GPU (CUDA) and we merge the results in the CPU
-    # So we need to create the sections of 100 atoms and the last section can have less than 100 atoms
-    # Each section is a list of atoms_com and we have to make run a kernel on each section to get the clusters
-    # We have to merge the clusters of each section to get the final clusters
-    # We have to merge the clusters_com of each section to get the final clusters_com
-    # We have to merge the total number of atoms to get the total number of atoms
-    # We check at the end that we have the same number of atoms in the clusters and the total number of atoms
-    
     return clusters, clusters_com
-"""
+
+# We process the list of atoms to create the clusters in GPU by sections of 100 atoms (to avoid memory overflow)
+# We do the clustering by sections of 100 atoms in parallel with the GPU (CUDA) and we merge the results in the CPU
+# So we need to create the sections of 100 atoms and the last section can have less than 100 atoms
+# Each section is a list of atoms_com and we have to make run a kernel on each section to get the clusters
+# We have to merge the clusters of each section to get the final clusters
+# We have to merge the clusters_com of each section to get the final clusters_com
+# We have to merge the total number of atoms to get the total number of atoms
+# We check at the end that we have the same number of atoms in the clusters and the total number of atoms
 
 def show_graphs_clusters(molecule, clusters, clusters_com, total_atoms):
     # We show the graph by color depending of the percentage in each cluster (Only center of mass of the cluster)
