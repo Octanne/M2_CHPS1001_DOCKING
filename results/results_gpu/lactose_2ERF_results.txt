@@ -1,8 +1,0 @@
-Molecule : 2ERF
-Nb of atoms : 10323
-Nb of clusters : 3
-Total percentage : 100.0000%
-| Cluster ID | Nb of atoms | Center of mass | Percentage |
-| Cluster 0000 | 10244 | (+0016.70 +0002.54 +0007.20) | 099.2347% |
-| Cluster 0001 | 0058 | (+0007.96 +0005.47 +0003.44) | 000.5619% |
-| Cluster 0002 | 0021 | (+0010.03 -0005.80 +0002.40) | 000.2034% |

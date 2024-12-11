@@ -1,7 +1,0 @@
-Molecule : 1MMQ
-Nb of atoms : 6800
-Nb of clusters : 2
-Total percentage : 100.0000%
-| Cluster ID | Nb of atoms | Center of mass | Percentage |
-| Cluster 0000 | 6431 | (+0021.14 -0012.44 +0022.15) | 094.5735% |
-| Cluster 0001 | 0369 | (+0014.34 -0018.94 +0025.78) | 005.4265% |

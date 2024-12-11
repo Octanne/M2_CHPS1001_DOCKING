@@ -1,6 +1,0 @@
-Molecule : 3MA2
-Nb of atoms : 11377
-Nb of clusters : 1
-Total percentage : 100.0000%
-| Cluster ID | Nb of atoms | Center of mass | Percentage |
-| Cluster 0000 | 11377 | (-0000.78 +0005.28 +0016.36) | 100.0000% |

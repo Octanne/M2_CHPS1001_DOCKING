@@ -1,7 +1,0 @@
-Molecule : 3OVX
-Nb of atoms : 12152
-Nb of clusters : 2
-Total percentage : 100.0000%
-| Cluster ID | Nb of atoms | Center of mass | Percentage |
-| Cluster 0000 | 12115 | (+0006.57 +0017.62 +0004.01) | 099.6955% |
-| Cluster 0001 | 0037 | (+0002.20 +0013.63 +0013.49) | 000.3045% |

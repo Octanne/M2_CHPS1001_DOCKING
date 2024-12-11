@@ -1,7 +1,0 @@
-Molecule : 1ITV
-Nb of atoms : 9610
-Nb of clusters : 2
-Total percentage : 100.0000%
-| Cluster ID | Nb of atoms | Center of mass | Percentage |
-| Cluster 0000 | 9475 | (-0013.74 -0009.70 -0000.86) | 098.5952% |
-| Cluster 0001 | 0135 | (-0020.69 -0016.70 +0000.10) | 001.4048% |

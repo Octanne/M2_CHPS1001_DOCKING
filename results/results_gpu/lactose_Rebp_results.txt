@@ -1,7 +1,0 @@
-Molecule : Rebp
-Nb of atoms : 17019
-Nb of clusters : 2
-Total percentage : 100.0000%
-| Cluster ID | Nb of atoms | Center of mass | Percentage |
-| Cluster 0000 | 0018 | (+0021.58 +0006.84 +0047.06) | 000.1058% |
-| Cluster 0001 | 17001 | (+0010.50 +0010.14 +0054.05) | 099.8942% |

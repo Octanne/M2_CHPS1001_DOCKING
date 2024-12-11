@@ -157,7 +157,7 @@ def calc_section_gpu(args):
     
     # Process cluster indices to form clusters
     if clusters_past is None:
-        for atom_id in range(num_atoms):
+        for atom_id in tqdm(range(num_atoms)):
             atom_com = section[atom_id] # Il s'agit du centre de masse de l'atome
             atom_id_group = int(cluster_indices[atom_id]) # Il s'agit de l'indice de l'atome vers lequel l'atome pointe
             
@@ -189,7 +189,7 @@ def calc_section_gpu(args):
             clusters_com[atom_id_group] = calculate_com_cluster(clusters[atom_id_group], clusters_com[atom_id_group], atom_com)
             clusters[atom_id_group].append(atom_com)
     else:
-        for cluster_id in range(num_atoms):
+        for cluster_id in tqdm(range(num_atoms)):
             cluster_com = section[cluster_id] # Il s'agit du centre de masse du cluster
             cluster_id_group = int(cluster_indices[cluster_id]) # Il s'agit de l'indice du cluster vers lequel le cluster pointe
             
@@ -288,7 +288,7 @@ def clustering_molecule(mol_atoms):
     
     check_nb_of_atoms(clusters, len(atoms_com_array)) # Check if we have the same number of atoms
     
-    print("Nb of clusters before fusion : ", len(clusters))
+    #print("Nb of clusters before fusion : ", len(clusters))
     
     # We fusion the clusters that are at less than 10 Angstroms from each other by using a kernel
     _="""clusters, clusters_com = fusion_clusters_cpu(clusters, clusters_com)"""
