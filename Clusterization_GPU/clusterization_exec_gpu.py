@@ -12,8 +12,16 @@ from multiprocessing import Pool
 import multiprocessing as mp
 import time
 
+# We need to set in spawn mode to be able to use the multiprocessing with CUDA
+def set_start_method():
+    try:
+        mp.set_start_method('spawn')
+    except RuntimeError:
+        pass
+
 POINT_SPACING=0.375 # Point spacing in Angstroms
 RESULT_FOLDER="results/results_gpu"
+CPU_COUNT=8
 
 def parse_files(directory):
     result = dict()
@@ -59,7 +67,7 @@ def calculate_com_atom(atom):
     atom_x = atom_data[7]
     atom_y = atom_data[8]
     atom_z = atom_data[9]
-    return [float(atom_x)*POINT_SPACING, float(atom_y)*POINT_SPACING, float(atom_z)*POINT_SPACING]
+    return cp.array([float(atom_x), float(atom_y), float(atom_z)], dtype=cp.float32)
 
 def calculate_com_cluster(cluster, cluster_com, atom_com):
     # We add atom_com to the mean of the cluster
@@ -77,8 +85,8 @@ def calculate_com_cluster_combine(cluster1, cluster_com1, cluster2, cluster_com2
     com[2] = (cluster_com1[2] * len(cluster1) + cluster_com2[2] * len(cluster2)) / (len(cluster1) + len(cluster2))
     return com
 
-# Kernel definition for clustering 
-cluster_kernel = cp.ElementwiseKernel( 
+# Kernel definition for atoms clustering 
+cluster_atom_kernel = cp.ElementwiseKernel( 
     'raw float32 x, raw float32 y, raw float32 z, float32 threshold, int32 num_atoms',
     'int32 cluster_index', 
     ''' 
@@ -95,55 +103,147 @@ cluster_kernel = cp.ElementwiseKernel(
         } 
     } 
     cluster_index = idx; ''', 
-    'cluster_kernel' ) 
+    'cluster_atom_kernel' )
 
-def clustering_molecule(mol_atoms): 
-    clusters = dict()
-    clusters_com = dict() 
-    atoms_com = [calculate_com_atom(atom) for atom in mol_atoms] 
-    atoms_com.sort(key=lambda x: (x[2], x[1], x[0])) 
-    
+def clustering_molecule_sect(mol_atoms):    
+    # We convert the list of atoms in a list of center of mass
+    atoms_com = cp.array([calculate_com_atom(atom) for atom in mol_atoms], dtype=cp.float32)
+    # We offload the atoms_com to the GPU
+    atoms_com = cp.array(atoms_com)
+    # We sort the atoms_com by the z axis then the y axis then the x axis
+    sort_indices = cp.lexsort(cp.stack((atoms_com[:, 0], atoms_com[:, 1], atoms_com[:, 2])))
+    atoms_com = atoms_com[sort_indices]
+        
+    # We define the number of atoms per section and the threshold for clustering
+    nb_atoms = len(atoms_com)
     nb_atoms_per_section = 2500
-    atoms_com_array = cp.array(atoms_com, dtype=cp.float32) 
-    num_sections = (len(atoms_com_array) + (nb_atoms_per_section-1)) // nb_atoms_per_section 
-    
+    nb_sections = (len(atoms_com) + (nb_atoms_per_section-1)) // nb_atoms_per_section
     ANGSTROMS = 10.0
     
-    # TODO Potentially we can use a kernel to process the sections in parallel (to be done)
-    for i in range(num_sections): 
-        section = atoms_com_array[i*nb_atoms_per_section:(i+1)*nb_atoms_per_section] 
-        num_atoms = section.shape[0]
-        d_section = cp.array(section)
-        
-        # Extract x, y, z coordinates 
-        x = d_section[:, 0] 
-        y = d_section[:, 1] 
-        z = d_section[:, 2] 
-        
-        # Initialize cluster indices 
-        cluster_indices = cp.zeros(num_atoms, dtype=cp.int32)
-        
-        # Launch the kernel 
-        cluster_kernel(x, y, z, ANGSTROMS, num_atoms, cluster_indices)
-        
-        # Process cluster indices to form clusters 
-        for j in range(num_atoms):
-            idx = int(cluster_indices[j]+i*nb_atoms_per_section) # We add the offset of the section
-            atom_com = section[j]
-            if idx not in clusters:
-                clusters[idx] = [atom_com]
-                clusters_com[idx] = atom_com
-            else:
-                clusters[idx].append(atom_com)
-                clusters_com[idx] = calculate_com_cluster(clusters[idx], clusters_com[idx], atom_com)
-                
+    # We create the list of clusters and clusters_com in the GPU
+    clusters = cp.zeros((nb_atoms, 3), dtype=cp.float32, order='C')
+    clusters_com = cp.zeros((nb_atoms, 3), dtype=cp.float32, order='C')
+    
+    print("cluster : ", clusters)
+    
+    # We flatten the atoms_com array to be able to process it in the kernel
+    atoms_comX = cp.ascontiguousarray(atoms_com[:, 0].flatten())
+    atoms_comY = cp.ascontiguousarray(atoms_com[:, 1].flatten())
+    atoms_comZ = cp.ascontiguousarray(atoms_com[:, 2].flatten())
+    
+    print(f"Nb of atoms : {nb_atoms}")
+    print(f"Nb of sections : {nb_sections}")
+    print(f"atoms_comX : {atoms_comX}")
+    print(f"atoms_comY : {atoms_comY}")
+    print(f"atoms_comZ : {atoms_comZ}")
+    
+    threads_per_block = 256
+    blocks_per_grid = (nb_sections + (threads_per_block - 1)) // threads_per_block
+    print(f"Threads per block : {threads_per_block}")
+    
+    # We process the sections in parallel with the GPU (CUDA) and we merge the results in the CPU
+    
+    # We fusion the clusters that are at less than 10 Angstroms from each other by using a kernel
+    # TODO : We have to do this in the GPU with a kernel to be faster and more efficient (to be done)
+    NONE_CLUSTER = cp.zeros((0, 3), dtype=cp.float32)
+    for i in range(len(clusters_com)):
+        for j in range(len(clusters_com)):
+            if i != j:
+                if cp.array_equal(clusters[i], NONE_CLUSTER) or cp.array_equal(clusters[j], NONE_CLUSTER):
+                    continue
+                dist = cp.linalg.norm(clusters_com[i] - clusters_com[j])
+                if dist < ANGSTROMS:
+                    clusters[i] = cp.concatenate((clusters[i], clusters[j]), axis=0)
+                    clusters_com[i] = calculate_com_cluster_combine(clusters[i], clusters_com[i], clusters[j], clusters_com[j])
+                    clusters[j] = NONE_CLUSTER
+                    clusters_com[j] = NONE_CLUSTER
+    # We convert the clusters and clusters_com to the final list
+    final_clusters = [cluster for cluster in clusters if not cp.array_equal(cluster, NONE_CLUSTER)]
+    final_clusters_com = [cluster_com for cluster_com in clusters_com if not cp.array_equal(cluster_com, NONE_CLUSTER)]
+    
+    return final_clusters, final_clusters_com
+    
+def calc_section(args):
+    i, atoms_com_array, nb_atoms_per_section, ANGSTROMS = args
+    
+    section = atoms_com_array[i*nb_atoms_per_section:(i+1)*nb_atoms_per_section] 
+    num_atoms = section.shape[0]
+    d_section = cp.array(section)
+    
+    # Extract x, y, z coordinates 
+    x = d_section[:, 0] 
+    y = d_section[:, 1] 
+    z = d_section[:, 2] 
+    
+    # Initialize cluster indices 
+    cluster_indices = cp.zeros(num_atoms, dtype=cp.int32)
+    
+    # Launch the kernel 
+    cluster_atom_kernel(x, y, z, ANGSTROMS, num_atoms, cluster_indices)
+    print("sector : ", i)
+    
+    clusters = dict()
+    clusters_com = dict()
+    
+    # Process cluster indices to form clusters 
+    for j in range(num_atoms):
+        idx = int(cluster_indices[j]+i*nb_atoms_per_section) # We add the offset of the section
+        atom_com = section[j]
+        if idx not in clusters:
+            clusters[idx] = [atom_com]
+            clusters_com[idx] = atom_com
+        else:
+            clusters[idx].append(atom_com)
+            clusters_com[idx] = calculate_com_cluster(clusters[idx], clusters_com[idx], atom_com)
+            
+    return clusters, clusters_com
+
+def clustering_molecule(mol_atoms): 
+    check_time("clustering") # We start the time for the clustering
+    
+    check_time("preparation") # We start the time
+    
+    check_time("calc_com") # We start the time for the center of mass calculation
+    # TODO faire calc en parallèle
+    atoms_com = [calculate_com_atom(atom) for atom in mol_atoms]
+    check_time("calc_com") # We save the time for the center of mass calculation
+    
+    check_time("sort") # We start the time for the sorting
+    atoms_com_array = cp.array(atoms_com, dtype=cp.float32)  # Move atoms_com to GPU
+    # We sort the atoms by the z axis then the y axis then the x axis
+    atoms_com_array = atoms_com_array[cp.lexsort(cp.stack((atoms_com_array[:, 0], atoms_com_array[:, 1], atoms_com_array[:, 2])))]
+    check_time("sort") # We save the time for the sorting
+    
+    check_time("calc sections") # We start the time for the copy to device
+    ANGSTROMS = 10.0
+    nb_atoms_per_section = 4500
+    num_sections = (len(atoms_com_array) + (nb_atoms_per_section-1)) // nb_atoms_per_section 
+    check_time("calc sections") # We save the time for the copy to device
+    
+    check_time("preparation") # We save the time
+
+    check_time("sect") # We start the time for the section clustering
+    # TODO make a pool to calc section in parallel
+    pool = Pool(min(CPU_COUNT, num_sections))
+    results = pool.map(calc_section, [(i, atoms_com_array, nb_atoms_per_section, ANGSTROMS) for i in range(num_sections)])
+    
+    # get the results from the pool and fusion the dict
+    clusters = dict()
+    clusters_com = dict()
+    for result in results:
+        for key in result[0]:
+            assert key not in clusters # Check if the key is not already in the clusters
+            clusters[key] = result[0][key]
+            clusters_com[key] = result[1][key]
+    check_time("sect") # We save the time for the section clustering
+    
+    check_time("final") # We start the time for the final clustering
     final_clusters = []
     final_clusters_com = []
     
     nb_total_atoms = 0
     for i in clusters.keys():
         nb_total_atoms += len(clusters[i])
-    
     assert nb_total_atoms == len(atoms_com) # Check if we have the same number of atoms
                 
     # We fusion the clusters that are at less than 10 Angstroms from each other by using a kernel
@@ -165,6 +265,10 @@ def clustering_molecule(mol_atoms):
         if clusters[i] != NONE_CLUSTER:
             final_clusters.append(clusters[i])
             final_clusters_com.append(clusters_com[i])
+    check_time("final") # We save the time for the final clustering
+    
+    check_time("clustering") # We save the time for the clustering
+    save_time()
     
     return final_clusters, final_clusters_com
 
@@ -302,51 +406,54 @@ def print_cluster_info(mol_clustering):
     show_tables_clusters(molecule, clusters, clusters_com, len(mol_atoms))
     show_graphs_clusters(molecule, clusters, clusters_com, len(mol_atoms))
 
-# We save the time in a file
-time_tabs = dict()
-def check_time(check_pt):
-    if check_pt in time_tabs.keys():
-        time_tabs[check_pt] = time.time() - time_tabs[check_pt]
-    else:
-        time_tabs[check_pt] = time.time()
-def save_time():
-    with open(f"{RESULT_FOLDER}/time_gpu.txt", 'w') as f:
-        for time in time_tabs:
-            f.write(f"{time} : {time_tabs[time]}\n")
-
-# We list all ligands
-folder_ligands = [ "galactose", "lactose", "minoxidil", "nebivolol", "resveratrol" ]
-
-# We create the results folder
-if not os.path.exists(RESULT_FOLDER):
-    os.makedirs(RESULT_FOLDER)
-check_time("total") # We start the total time
-# We list all proteins / ligands file docking sort by ligands
-for ligand in folder_ligands:
-    directory_ligand = f'data/Results_{ligand}'
-    print("===================================")
-    print(f"Ligand : {ligand}")
-    check_time(ligand) # We start the time for the ligand
+if __name__ == "__main__":
+    set_start_method()
     
-    parsed_data = parse_files(directory_ligand)
-    
-    # Prepare the data for the multiprocessing
-    tasks = [ (molecule, parsed_data, directory_ligand, ligand) for molecule in parsed_data ]
+    # We save the time in a file
+    time_tabs = dict()
+    def check_time(check_pt):
+        if check_pt in time_tabs.keys():
+            time_tabs[check_pt] = time.time() - time_tabs[check_pt]
+        else:
+            time_tabs[check_pt] = time.time()
+    def save_time():
+        with open(f"{RESULT_FOLDER}/time_gpu.txt", 'w') as f:
+            for time in time_tabs:
+                f.write(f"{time} : {time_tabs[time]}\n")
 
-    # Iterate to each molecule and process the clustering
-    results_async = map(process_molecule, tasks)
+    # We list all ligands
+    folder_ligands = [ "galactose", "lactose", "minoxidil", "nebivolol", "resveratrol" ]
+
+    # We create the results folder
+    if not os.path.exists(RESULT_FOLDER):
+        os.makedirs(RESULT_FOLDER)
+    check_time("total") # We start the total time
+    # We list all proteins / ligands file docking sort by ligands
+    for ligand in folder_ligands:
+        directory_ligand = f'data/Results_{ligand}'
+        print("===================================")
+        print(f"Ligand : {ligand}")
+        check_time(ligand) # We start the time for the ligand
         
-    # Print the results
-    results = list()
-    for mol_clustering in results_async:
-        print(f"Processing molecule {mol_clustering[0]} done !")
-        results.append(mol_clustering)
-    for result in results:
-        print_cluster_info(result)
-    print("===================================")
-    check_time(ligand) # We save the time for the ligand
+        parsed_data = parse_files(directory_ligand)
+        
+        # Prepare the data for the multiprocessing
+        tasks = [ (molecule, parsed_data, directory_ligand, ligand) for molecule in parsed_data ]
+
+        # Iterate to each molecule and process the clustering
+        results_async = map(process_molecule, tasks)
+            
+        # Print the results
+        results = list()
+        for mol_clustering in results_async:
+            print(f"Processing molecule {mol_clustering[0]} done !")
+            results.append(mol_clustering)
+        for result in results:
+            print_cluster_info(result)
+        print("===================================")
+        check_time(ligand) # We save the time for the ligand
+        save_time()
+    check_time("total") # We save the total time
     save_time()
-check_time("total") # We save the total time
-save_time()
-## Filtration d'abord conserver juste les fichiers avec le meilleur score (négatif car viable)
-## Faire parcours des fichiers 
+    ## Filtration d'abord conserver juste les fichiers avec le meilleur score (négatif car viable)
+    ## Faire parcours des fichiers 
