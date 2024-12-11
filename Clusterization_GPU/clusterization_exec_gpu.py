@@ -19,8 +19,8 @@ def set_start_method():
         pass
 
 POINT_SPACING=0.375 # Point spacing in Angstroms
-RESULT_FOLDER="results/corentin-pc/results_gpu_clus_100_atoms_1125"
-CPU_COUNT=8
+RESULT_FOLDER="results/juliet/results_gpu"
+CPU_COUNT=20
 ANGSTROMS=10
 NONE_CLUSTER = "[ None ]"
 

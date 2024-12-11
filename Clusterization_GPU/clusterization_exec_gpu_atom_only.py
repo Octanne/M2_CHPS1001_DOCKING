@@ -19,8 +19,8 @@ def set_start_method():
         pass
 
 POINT_SPACING=0.375 # Point spacing in Angstroms
-RESULT_FOLDER="results/results_gpu_atom_only"
-CPU_COUNT=8
+RESULT_FOLDER="results/juliet/results_gpu_atom_only"
+CPU_COUNT=20
 ANGSTROMS=10
 NONE_CLUSTER = "[ None ]"
 

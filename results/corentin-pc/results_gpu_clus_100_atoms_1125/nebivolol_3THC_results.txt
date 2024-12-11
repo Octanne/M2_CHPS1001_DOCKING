@@ -1,0 +1,7 @@
+Molecule : 3THC
+Nb of atoms : 49536
+Nb of clusters : 2
+Total percentage : 100.0000%
+| Cluster ID | Nb of atoms | Center of mass | Percentage |
+| Cluster 0000 | 46472 | (+0003.21 +0011.42 -0000.07) | 093.8146% |
+| Cluster 0001 | 3064 | (+0000.07 +0001.08 -0000.07) | 006.1854% |

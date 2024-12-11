@@ -11,8 +11,8 @@ import multiprocessing as mp
 import time
 
 POINT_SPACING=0.375 # Point spacing in Angstroms
-RESULT_FOLDER="results/results_cpu"
-CPU_COUNT = 8
+RESULT_FOLDER="results/juliet/results_cpu"
+CPU_COUNT = 20
 
 def parse_files(directory):
     result = dict()

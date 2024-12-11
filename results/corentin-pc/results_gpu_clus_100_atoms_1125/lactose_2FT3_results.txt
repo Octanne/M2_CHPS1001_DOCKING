@@ -1,0 +1,7 @@
+Molecule : 2FT3
+Nb of atoms : 22351
+Nb of clusters : 2
+Total percentage : 100.0000%
+| Cluster ID | Nb of atoms | Center of mass | Percentage |
+| Cluster 0000 | 18683 | (+0023.12 +0006.75 +0034.57) | 083.5891% |
+| Cluster 0001 | 3668 | (+0007.18 +0001.56 +0035.64) | 016.4109% |
