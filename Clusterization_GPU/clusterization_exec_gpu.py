@@ -19,7 +19,7 @@ def set_start_method():
         pass
 
 POINT_SPACING=0.375 # Point spacing in Angstroms
-RESULT_FOLDER="results/juliet/results_gpu"
+RESULT_FOLDER="results/juliet/results_gpu_clus_100_atoms_2250"
 CPU_COUNT=20
 ANGSTROMS=10
 NONE_CLUSTER = "[ None ]"
@@ -233,7 +233,7 @@ def prepare_data_atoms(mol_atoms):
     check_time("sort_atoms") # We save the time for the sorting
     
     check_time("calc_sections_atoms") # We start the time for the copy to device
-    nb_atoms_per_section = 512
+    nb_atoms_per_section = 2250
     num_sections = (len(atoms_com_array) + (nb_atoms_per_section-1)) // nb_atoms_per_section 
     check_time("calc_sections_atoms") # We save the time for the copy to device
     
