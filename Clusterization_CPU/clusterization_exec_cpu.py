@@ -13,6 +13,7 @@ import time
 
 POINT_SPACING=0.375 # Point spacing in Angstroms
 RESULT_FOLDER="results/results_cpu"
+CPU_COUNT = 8
 
 def parse_files(directory):
     result = dict()
@@ -242,7 +243,7 @@ for ligand in folder_ligands:
     tasks = [ (molecule, parsed_data, directory_ligand, ligand) for molecule in parsed_data ]
 
     # Use multiprocessing pool to process each molecule
-    with Pool(processes=max(1, mp.cpu_count() // 4)) as pool:  # Adjust number of processes as needed
+    with Pool(processes=CPU_COUNT) as pool:  # Adjust number of processes as needed
         results_async = pool.map(process_molecule, tasks)
         
     # Print the results
