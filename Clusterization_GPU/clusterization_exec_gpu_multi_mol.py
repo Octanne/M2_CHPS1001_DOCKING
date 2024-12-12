@@ -276,6 +276,7 @@ def clustering_molecule(mol_atoms):
 
     check_time("sect_atoms") # We start the time for the section clustering
     pool = Pool(min(CPU_COUNT, num_sections))
+    print(f"Nb of sections : {num_sections}")
     results = pool.map(calc_section_gpu, [(i, atoms_com_array, nb_atoms_per_section) for i in range(num_sections)])
     # get the results from the pool and fusion the dict
     clusters = []
