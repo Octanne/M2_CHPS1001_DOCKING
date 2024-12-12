@@ -19,7 +19,7 @@ def set_start_method():
         pass
 
 POINT_SPACING=0.375 # Point spacing in Angstroms
-RESULT_FOLDER="results/juliet/results_gpu_clus_100_atoms_5000"
+RESULT_FOLDER="results/juliet/results_gpu_multi_mol_clus_100_atoms5000"
 CPU_COUNT=20
 ANGSTROMS=10
 NONE_CLUSTER = "[ None ]"
@@ -454,7 +454,8 @@ if __name__ == "__main__":
         tasks = [ (molecule, parsed_data, directory_ligand, ligand) for molecule in parsed_data ]
 
         # Iterate to each molecule and process the clustering
-        results_async = map(process_molecule, tasks)
+        Pool = mp.Pool(processes=CPU_COUNT)
+        results_async = Pool.map(process_molecule, tasks)
             
         # Print the results
         results = list()
