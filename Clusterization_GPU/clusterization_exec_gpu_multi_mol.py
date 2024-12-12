@@ -419,20 +419,21 @@ def print_cluster_info(mol_clustering):
     show_tables_clusters(molecule, clusters, clusters_com, len(mol_atoms))
     show_graphs_clusters(molecule, clusters, clusters_com, len(mol_atoms))
 
+# We save the time in a file
+time_tabs = dict()
+def check_time(check_pt):
+    if check_pt in time_tabs.keys():
+        time_tabs[check_pt] = time.time() - time_tabs[check_pt]
+    else:
+        time_tabs[check_pt] = time.time()
+def save_time():
+    process_id = os.getpid()
+    with open(f"{RESULT_FOLDER}/times/time_gpu_{process_id}.txt", 'w') as f:
+        for time in time_tabs:
+            f.write(f"{time} : {time_tabs[time]}\n")
+
 if __name__ == "__main__":
     set_start_method()
-    
-    # We save the time in a file
-    time_tabs = dict()
-    def check_time(check_pt):
-        if check_pt in time_tabs.keys():
-            time_tabs[check_pt] = time.time() - time_tabs[check_pt]
-        else:
-            time_tabs[check_pt] = time.time()
-    def save_time():
-        with open(f"{RESULT_FOLDER}/time_gpu.txt", 'w') as f:
-            for time in time_tabs:
-                f.write(f"{time} : {time_tabs[time]}\n")
 
     # We list all ligands
     folder_ligands = [ "galactose", "lactose", "minoxidil", "nebivolol", "resveratrol" ]
@@ -440,6 +441,7 @@ if __name__ == "__main__":
     # We create the results folder
     if not os.path.exists(RESULT_FOLDER):
         os.makedirs(RESULT_FOLDER)
+        os.makedirs(f"{RESULT_FOLDER}/times")
     check_time("total") # We start the total time
     # We list all proteins / ligands file docking sort by ligands
     for ligand in folder_ligands:
